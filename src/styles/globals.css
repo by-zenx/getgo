@@ -1,0 +1,55 @@
+@import "./fonts.css";
+@import "./corbel-global.css";
+
+/* View-scoped styles: naturally scoped via [data-view="..."] */
+@import "./views/dashboard.css";
+@import "./views/products.css";
+@import "./views/orders.css";
+@import "./views/customers.css";
+@import "./views/messages.css";
+@import "./views/email.css";
+@import "./views/automations.css";
+@import "./views/analytics.css";
+@import "./views/integrations.css";
+@import "./views/workspace.css";
+@import "./views/help.css";
+@import "./views/feedback.css";
+@import "./views/settings.css";
+
+/* Match the source mirror's soft overlay entrance while GSAP moves the panel. */
+dialog.finder[open]::backdrop {
+  animation: corbel-backdrop-in 0.3s ease-out both;
+}
+
+@keyframes corbel-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.db-channel .seg__pill { will-change: transform, width; }
+.db-col__fill { transition: height 0.5s cubic-bezier(.2,.7,.2,1), background-color 0.25s; }
+.db-bar { margin-bottom: 16px; }
+.set-tabs { margin-bottom: 16px; }
+.subtabs__pill { z-index: 2; inset: 0; border-radius: 999px; gap: 2px; padding: 4px; display: flex; position: absolute; pointer-events: none; will-change: clip-path; }
+.subtabs__pill > span { color: var(--text); font-size: var(--fs-md); white-space: nowrap; border-radius: 999px; align-items: center; gap: 6px; padding: 11px 15px; font-weight: 600; display: inline-flex; }
+
+.msg-side__content { display: flex; flex-direction: column; gap: 20px; min-height: 100%; }
+.em-row { width: 100%; border: 0; background: transparent; cursor: pointer; font: inherit; text-align: left; }
+.em-row__name .thumb { --s: 40px; }
+.em-row-empty { padding: 24px 20px; }
+.em-row-empty .empty { min-height: 180px; }
+.em-mail__from-av .ico { width: 16px; height: 16px; }
+.em-mail__logo .ico { width: 15px; height: 15px; }
+.em-rate .meter__fill { transform-origin: left; }
+.an-cmp { color: var(--up); font-size: var(--fs-xs); font-weight: 600; }
+.an-cmp.is-down { color: var(--down); }
+.an-split__fill { transition: transform 0.65s cubic-bezier(.2,.7,.2,1); }
+
+.au-mini__group { display: flex; align-items: center; flex: 1; min-width: 0; }
+.au-link { position: relative; }
+.au-menu { position: absolute; z-index: 20; top: 38px; left: 50%; transform: translateX(-50%); max-height: min(380px, 60dvh); overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow-pop); }
+.au-menu__item { min-width: 250px; }
+.au-add[aria-expanded="true"] { background: var(--primary); color: var(--on-primary); }
+.au-runcard__empty { padding: 24px 8px; }
+.int-menu { position: absolute; z-index: 12; right: 12px; bottom: 60px; width: 220px; }
+.int-menu__item .int-sync { flex: none; }
