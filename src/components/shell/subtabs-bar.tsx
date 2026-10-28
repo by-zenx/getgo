@@ -4,65 +4,9 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import gsap from "gsap";
-
-interface SubtabConfig {
-  key: string;
-  items: { href: string; label: string; key: string }[];
-}
+import { SUBTAB_GROUPS } from "@/config/route-config";
 
 let sharedSubtabPosition: { groupKey: string; coords: { l: number; r: number } } | null = null;
-
-const SUBTAB_GROUPS: Record<string, SubtabConfig> = {
-  customers: {
-    key: "customers",
-    items: [
-      { href: "/customers", label: "Customers", key: "customers" },
-      { href: "/feedback", label: "Feedback", key: "feedback" },
-    ],
-  },
-  feedback: {
-    key: "customers",
-    items: [
-      { href: "/customers", label: "Customers", key: "customers" },
-      { href: "/feedback", label: "Feedback", key: "feedback" },
-    ],
-  },
-  messages: {
-    key: "messages",
-    items: [
-      { href: "/messages", label: "Inbox", key: "messages" },
-      { href: "/email", label: "Email", key: "email" },
-    ],
-  },
-  email: {
-    key: "messages",
-    items: [
-      { href: "/messages", label: "Inbox", key: "messages" },
-      { href: "/email", label: "Email", key: "email" },
-    ],
-  },
-  automations: {
-    key: "automations",
-    items: [
-      { href: "/automations", label: "Automations", key: "automations" },
-      { href: "/integrations", label: "Integrations", key: "integrations" },
-    ],
-  },
-  integrations: {
-    key: "automations",
-    items: [
-      { href: "/automations", label: "Automations", key: "automations" },
-      { href: "/integrations", label: "Integrations", key: "integrations" },
-    ],
-  },
-  workspace: {
-    key: "workspace",
-    items: [
-      { href: "/workspace/spring-launch", label: "Spring Launch", key: "spring-launch" },
-      { href: "/workspace/retail-plan", label: "Retail Plan", key: "retail-plan" },
-    ],
-  },
-};
 
 export function SubtabsBar() {
   const pathname = usePathname();

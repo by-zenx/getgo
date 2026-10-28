@@ -4,24 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import gsap from "gsap";
-
-export interface TabItem {
-  href: string;
-  label: string;
-  route: string;
-  count?: number | string;
-  groupedRoutes?: string[];
-}
-
-export const MAIN_TABS: TabItem[] = [
-  { href: "/dashboard", label: "Dashboard", route: "dashboard" },
-  { href: "/orders", label: "Orders", route: "orders", count: 3 },
-  { href: "/products", label: "Products", route: "products" },
-  { href: "/customers", label: "Customers", route: "customers", groupedRoutes: ["feedback"] },
-  { href: "/messages", label: "Messages", route: "messages", count: 2, groupedRoutes: ["email"] },
-  { href: "/analytics", label: "Analytics", route: "analytics" },
-  { href: "/automations", label: "Automations", route: "automations", groupedRoutes: ["integrations"] },
-];
+import { MAIN_TABS } from "@/config/route-config";
 
 export function NavTabs() {
   const pathname = usePathname();

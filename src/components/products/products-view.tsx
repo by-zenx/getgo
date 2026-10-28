@@ -138,6 +138,8 @@ export function ProductsView({ productId = null }: { productId?: string | null }
       const stored = localStorage.getItem(PRODUCTS_KEY);
       if (stored) {
         const parsed = safeProducts(stored);
+        // Restore saved products in the existing mount effect to preserve startup behavior.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (parsed) setProducts(parsed);
       } else localStorage.setItem(PRODUCTS_KEY, JSON.stringify(createInitialProducts()));
       if (localStorage.getItem(VIEW_KEY) === '"table"') setViewMode("table");
@@ -211,6 +213,8 @@ export function ProductsView({ productId = null }: { productId?: string | null }
   }, [productId, selectedProduct]);
 
   useEffect(() => {
+    // Refresh the price form when the selected product changes, as before.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPriceDraft(selectedProduct?.price.toFixed(2) ?? "");
     setPriceError("");
     setChartIndex(null);

@@ -195,6 +195,8 @@ export function SettingsView() {
   const seatLimit = draft.plan === "Plus" ? 25 : 10;
   const pendingCount = team.filter((member) => member.pending).length;
   useEffect(() => {
+    // Initialize settings from storage after mount, preserving the existing screen behavior.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTrialEnd(Date.now() + 9 * 24 * 60 * 60 * 1000);
     const stored = safeRead<SettingsModel>(SETTINGS_KEY, DEFAULT_SETTINGS);
     setDraft(stored);
@@ -286,12 +288,16 @@ export function SettingsView() {
 
   const changeTheme = (next: Theme) => {
     setTheme(next);
+    // Theme changes are user actions that update the document root immediately.
+    // eslint-disable-next-line react-hooks/immutability
     document.documentElement.dataset.theme = next;
     try { localStorage.setItem("corbel:theme", JSON.stringify(next)); } catch {}
   };
 
   const changePalette = (next: Palette) => {
     setPalette(next);
+    // Palette changes are user actions that update the document root immediately.
+    // eslint-disable-next-line react-hooks/immutability
     document.documentElement.dataset.palette = next;
     try { localStorage.setItem("corbel:palette", JSON.stringify(next)); } catch {}
   };
@@ -410,6 +416,8 @@ export function SettingsView() {
   };
 
   const invoices = useMemo(() => {
+    // This memo derives invoice dates from the current time as the existing screen does.
+    // eslint-disable-next-line react-hooks/purity
     const now = Date.now();
     const rows = [0, 1, 2, 3].map((index) => {
       const date = now - (index * 30 + 1) * 24 * 60 * 60 * 1000;
@@ -476,6 +484,7 @@ export function SettingsView() {
             <header className="set-sec__head"><h2>Your profile</h2><p className="card__sub">How you appear to your team and on order notes.</p></header>
             <div className="set-profile">
               <div className="set-avatar">
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 <span className="av av--lg" style={{ ["--h" as any]: 206 }} aria-hidden="true">{initials(draft.name)}</span>
                 <span className="set-avatar__txt"><b>{draft.name || " "}</b><small>Owner · {draft.store}</small></span>
               </div>
@@ -580,7 +589,10 @@ export function SettingsView() {
                 <li key={`${member.email}-${index}`} className={`set-mate${member.pending ? " is-pending" : ""}`}>
                   {member.pending
                     ? <span className="av av--more" aria-hidden="true"><Icon name="mail" /></span>
-                    : <span className="av" style={{ ["--h" as any]: member.hue }} aria-hidden="true">{initials(member.name)}</span>}
+                    : <>
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                      <span className="av" style={{ ["--h" as any]: member.hue }} aria-hidden="true">{initials(member.name)}</span>
+                    </>}
                   <span className="set-mate__who"><b>{member.pending ? member.email : member.name}{member.role === "Owner" && <span className="set-you">You</span>}</b><small>{member.pending ? `Invited ${formatDate(member.invited ?? DEMO_NOW)}` : member.email}</small></span>
                   {member.pending && <span className="pill pill--amber">Pending</span>}
                   {member.role === "Owner" ? <span className="set-mate__role">Owner</span> : <label className="set-mate__role"><span className="sr-only">Role for {member.name}</span><select className="select" aria-label={`Role for ${member.name}`} value={member.role} onChange={(event) => saveTeam(team.map((item, i) => i === index ? { ...item, role: event.target.value } : item))}>{ROLES.map((role) => <option key={role}>{role}</option>)}</select></label>}

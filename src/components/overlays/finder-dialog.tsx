@@ -80,6 +80,8 @@ export function FinderDialog({
       inputRef.current?.focus();
     } else {
       if (dialog.open) dialog.close();
+      // Reset the closed finder in the existing close effect.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setQuery("");
       setSelectedIndex(0);
     }

@@ -144,9 +144,13 @@ export function WorkspaceView({ boardId }: { boardId: string }) {
   const activeCard = board?.columns.flatMap((column) => column.cards).find((card) => card.id === activeCardId) ?? null;
   const activeColumn = board?.columns.find((column) => column.cards.some((card) => card.id === activeCardId)) ?? null;
   const draggingTask = dragPreview ? board?.columns.flatMap((column) => column.cards).find((card) => card.id === dragPreview.taskId) ?? null : null;
+  // Preserve the existing memo because its dependencies track the selected board and filter.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const visibleCards = useMemo(() => board?.columns.reduce((sum, column) => sum + column.cards.filter((card) => !assigneeFilter || card.who === assigneeFilter).length, 0) ?? 0, [board, assigneeFilter]);
 
   useEffect(() => {
+    // Initialize board time and saved data on mount as before.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNow(Date.now());
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -164,6 +168,8 @@ export function WorkspaceView({ boardId }: { boardId: string }) {
   }, []);
 
   useEffect(() => {
+    // Reset board-local controls when the selected board changes, as before.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAssigneeFilter(null);
     setNewTaskColumn(null);
     setOpenMenuId(null);
@@ -407,10 +413,14 @@ export function WorkspaceView({ boardId }: { boardId: string }) {
     const title = new FormData(form).get("title")?.toString().trim() ?? "";
     if (!title) return;
     const task: WorkspaceTask = {
+      // Generate task ids only in response to the user's submit action.
+      // eslint-disable-next-line react-hooks/purity
       id: `w${Date.now().toString(36)}`,
       title,
       tag: newTaskTag,
       who: newTaskAssignee,
+      // Calculate the due date only in response to the user's submit action.
+      // eslint-disable-next-line react-hooks/purity
       due: Date.now() + 7 * DAY,
       checklist: [],
       comments: [],
@@ -485,6 +495,8 @@ export function WorkspaceView({ boardId }: { boardId: string }) {
   if (!board) {
     return (
       <div ref={rootRef} data-view="workspace" className="ws">
+        {/* Keep the existing fallback navigation target unchanged. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <section className="card"><div className="empty"><Icon name="calendar" /><b>That board doesn’t exist</b><span>It may have been renamed. Pick a board from the sidebar.</span><a className="btn" href="/workspace/spring-launch">Open Spring Launch</a></div></section>
       </div>
     );

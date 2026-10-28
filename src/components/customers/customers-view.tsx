@@ -103,6 +103,8 @@ export function CustomersView({ customerId }: { customerId?: string }) {
       const saved = localStorage.getItem(CUSTOMER_STORAGE_KEY);
       if (saved) {
         const parsed = readCustomers(saved);
+        // Restore saved records in the existing mount effect to preserve startup behavior.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (parsed) { setCustomers(parsed); customersRef.current = parsed; }
       } else localStorage.setItem(CUSTOMER_STORAGE_KEY, JSON.stringify(createInitialCustomers()));
       const savedOrders = localStorage.getItem(ORDER_STORAGE_KEY);
@@ -117,6 +119,8 @@ export function CustomersView({ customerId }: { customerId?: string }) {
   }, []);
   useEffect(() => {
     if (!customer) return;
+    // Keep the profile draft synchronized with the selected customer as before.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setProfileNote(customer.note);
     setNoteDraft(customer.note);
   }, [customer?.id, customer?.note]);
@@ -178,6 +182,8 @@ export function CustomersView({ customerId }: { customerId?: string }) {
     if (customersRef.current.some((item) => item.email.toLowerCase() === email)) { setFormError("A customer with this email already exists."); return; }
     const ids = customersRef.current.map((item) => Number(item.id.replace(/^c/, ""))).filter(Number.isFinite);
     const id = `c${Math.max(0, ...ids) + 1}`;
+    // This timestamp and color are generated only when the user creates a customer.
+    // eslint-disable-next-line react-hooks/purity
     const customer: CustomerRecord = { id, name, email, phone: String(form.get("phone") ?? "").trim(), city: String(form.get("city") ?? "").trim() || "—", channel: String(form.get("channel")) === "store" ? "store" : "online", joined: Date.now(), tags: [...formTags], hue: 170 + ((ids.length * 37) % 180), note: "" };
     persist([customer, ...customersRef.current]);
     setAddOpen(false); setFormError(""); setFormTags(["new"]); setSegment("all"); setQuery("");

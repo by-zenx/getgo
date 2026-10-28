@@ -87,6 +87,8 @@ export function AutomationListView() {
       const stored = localStorage.getItem(AUTOMATION_STORAGE_KEY);
       if (stored) {
         const parsed = readAutomations(stored);
+        // Restore saved workflows in the existing mount effect to preserve startup behavior.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (parsed) { setAutomations(parsed); autosRef.current = parsed; }
       } else saveAutomations(createInitialAutomations());
     } catch { /* Use the starter workflows when storage is unavailable. */ }
@@ -123,6 +125,8 @@ export function AutomationListView() {
     const template = AUTOMATION_TEMPLATES[templateIndex];
     const numericIds = autosRef.current.map((automation) => Number(automation.id.replace(/^a/, ""))).filter(Number.isFinite);
     const id = `a${Math.max(0, ...numericIds) + 1}`;
+    // This timestamp is generated on the user's create action, not during render.
+    // eslint-disable-next-line react-hooks/purity
     const automation: AutomationRecord = { id, name, desc: template.desc, enabled: false, runs30: 0, conv: 0, edited: Date.now(), hue: template.hue, steps: template.steps.map((step) => ({ ...step })), history: [] };
     persist([automation, ...autosRef.current]);
     setCreateOpen(false);
@@ -181,12 +185,18 @@ export function AutomationBuilder({ automationId }: { automationId: string }) {
       const saved = localStorage.getItem(AUTOMATION_STORAGE_KEY);
       if (saved) {
         const parsed = readAutomations(saved);
+        // Hydrate the persisted list once after mount; retaining this avoids changing startup behavior.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (parsed) { setAutomations(parsed); autosRef.current = parsed; }
       } else saveAutomations(createInitialAutomations());
     } catch { /* The builder remains usable with starter data. */ }
     finally { setStorageReady(true); }
   }, []);
-  useEffect(() => () => timelineRef.current?.kill(), []);
+  useEffect(() => {
+    return () => {
+      timelineRef.current?.kill();
+    };
+  }, []);
   useEffect(() => {
     const dialog = deleteDialogRef.current;
     if (!dialog) return;

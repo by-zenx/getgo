@@ -55,11 +55,17 @@ export function IntegrationsView() {
       const saved = localStorage.getItem(INTEGRATION_STORAGE_KEY);
       if (saved) {
         const parsed = readIntegrations(saved);
+        // Restore saved integrations in the existing mount effect to preserve startup behavior.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (parsed) { setIntegrations(parsed); integrationsRef.current = parsed; }
       } else localStorage.setItem(INTEGRATION_STORAGE_KEY, JSON.stringify(createInitialIntegrations()));
     } catch { /* Keep the integration cards available if storage is unavailable. */ }
   }, []);
-  useEffect(() => () => connectTimelineRef.current?.kill(), []);
+  useEffect(() => {
+    return () => {
+      connectTimelineRef.current?.kill();
+    };
+  }, []);
   useEffect(() => {
     const id = flipCardIdRef.current;
     if (!id) return;

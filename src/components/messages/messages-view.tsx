@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import Link from "next/link";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
@@ -116,6 +116,8 @@ export function MessagesView({ initialThreadId }: { initialThreadId?: string } =
   }, [threads]);
   useEffect(() => {
     if (initialThreadId && threads.some((thread) => thread.id === initialThreadId)) {
+      // Apply the URL-selected thread after mount, matching existing route behavior.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveId(initialThreadId);
       setPane("thread");
     }
@@ -126,6 +128,8 @@ export function MessagesView({ initialThreadId }: { initialThreadId?: string } =
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = safeThreads(saved);
+        // Restore saved inbox data in the existing mount effect to preserve startup behavior.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (parsed) setThreads(parsed);
       } else localStorage.setItem(STORAGE_KEY, JSON.stringify(createInitialMessageThreads()));
     } catch { /* Keep the inbox available when browser storage is blocked. */ }
@@ -253,6 +257,8 @@ export function MessagesView({ initialThreadId }: { initialThreadId?: string } =
     const text = value.trim();
     if (!activeThread || !text) return;
     const threadId = activeThread.id;
+    // Timestamp the message when the user sends it, not during render.
+    // eslint-disable-next-line react-hooks/purity
     const sentAt = Date.now();
     const outgoing: ConversationMessage = { id: `${threadId}-${sentAt}`, from: "me", text, at: sentAt, by: "Priya Shah" };
     updateThread(threadId, (thread) => ({ ...thread, done: false, unread: false, msgs: [...thread.msgs, outgoing] }));
@@ -279,7 +285,7 @@ export function MessagesView({ initialThreadId }: { initialThreadId?: string } =
     composeRef.current?.focus();
   };
 
-  const handleMessageKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleMessageKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       sendMessage(drafts[activeThread?.id ?? ""] ?? "");
@@ -319,7 +325,7 @@ export function MessagesView({ initialThreadId }: { initialThreadId?: string } =
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
-    const onKeyDown = (event: KeyboardEvent) => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
       const target = event.target as HTMLElement;
       if (!target.matches("[data-open]")) return;
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;

@@ -1,5 +1,5 @@
 1.Fix the base. Make next build pass (5 type errors), fix the lockfile and lint errors, delete the scratch file, and merge the duplicated nav config into one. No UI changes.
-2.Shared foundation. One set of fake CRM data (people, companies, leads, deals, quotes, events, projects) with consistent links between them. Add the colour-token aliases for rapport’s screens, and set up the new nav.
+2.Shared foundation. One set of fake CRM data (people, companies, leads, deals, quotes, events, projects) with consistent links between them.
 3.Contacts. Rename Customers, then add the People and Companies submenu. Everything else links to these, so they come first.
 4.Pipeline. Turn the Workspace into the deals board with the forecast, and keep the Workspace boards as Projects for work in progress.
 5.Leads. Rename Messages (Inbox and Email) and add the lead score, source and owner.

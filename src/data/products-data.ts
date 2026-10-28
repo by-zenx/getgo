@@ -20,7 +20,7 @@ export interface ProductRecord {
 
 export const PRODUCT_CATEGORIES: ProductCategory[] = ["Kitchen", "Table", "Bath", "Garden", "Desk"];
 
-const FIXTURES: ProductRecord[] = [
+const FIXTURES = ([
   { id: "p1", name: "Stoneware Mug, Fog", category: "Kitchen", price: 24, cost: 8.5, stock: 214, reorderAt: 60, sold30: 386, rating: 4.8, reviews: 412, hue: 210, status: "active", description: "Hand-thrown 350 ml mug with a satin fog glaze." },
   { id: "p2", name: "Linen Tea Towels, set of 3", category: "Kitchen", price: 32, cost: 11, stock: 128, reorderAt: 40, sold30: 241, rating: 4.7, reviews: 198, hue: 30, status: "active", description: "Stonewashed European linen in oat, rust and ink." },
   { id: "p3", name: "Oak Serving Board", category: "Table", price: 58, cost: 21, stock: 46, reorderAt: 25, sold30: 132, rating: 4.9, reviews: 156, hue: 35, status: "active", description: "Solid white oak, oiled, with a carved juice groove." },
@@ -37,7 +37,7 @@ const FIXTURES: ProductRecord[] = [
   { id: "p14", name: "Rattan Storage Basket", category: "Bath", price: 46, cost: 17, stock: 61, reorderAt: 20, sold30: 97, rating: 4.5, reviews: 81, hue: 38, status: "active", description: "Hand-woven rattan with leather handles." },
   { id: "p15", name: "Pour-over Kettle", category: "Kitchen", price: 89, cost: 34, stock: 39, reorderAt: 15, sold30: 73, rating: 4.7, reviews: 103, hue: 200, status: "active", description: "Gooseneck spout, 0.9 litre, matte black." },
   { id: "p16", name: "Cotton Bath Mat", category: "Bath", price: 29, cost: 9.5, stock: 0, reorderAt: 30, sold30: 0, rating: 0, reviews: 0, hue: 170, status: "draft", description: "Tufted organic cotton, 50 × 80 cm. Launching in spring." },
-].map((product) => ({ ...product, sku: `HS-${product.category.slice(0, 3).toUpperCase()}-${product.id.slice(1).padStart(3, "0")}` }));
+] satisfies Omit<ProductRecord, "sku">[]).map((product) => ({ ...product, sku: `HS-${product.category.slice(0, 3).toUpperCase()}-${product.id.slice(1).padStart(3, "0")}` }));
 
 export function createInitialProducts() {
   return FIXTURES.map((product) => ({ ...product }));

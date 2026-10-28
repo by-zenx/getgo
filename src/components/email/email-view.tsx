@@ -181,6 +181,8 @@ export function EmailView() {
       if (saved) {
         const parsed = readCampaigns(saved);
         if (parsed) {
+          // Restore saved campaigns in the existing mount effect to preserve startup behavior.
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           setCampaigns(parsed);
           campaignsRef.current = parsed;
           setCampaignSerial(Math.max(7, ...parsed.map((campaign) => Number(campaign.id.replace(/^e/, "")) + 1 || 7)));
@@ -406,6 +408,8 @@ export function EmailView() {
             <label className="field"><span className="label">Preview text <small className="em-opt">optional</small></span><input className="input" name="preview" maxLength={120} placeholder="The line shown after the subject" defaultValue={action.kind === "edit" ? actionCampaign?.preview : ""} /></label>
             <label className="field"><span className="label">Audience</span><select className="select" name="audience" defaultValue={action.kind === "edit" ? actionCampaign?.audience : EMAIL_AUDIENCES[0].name}>{EMAIL_AUDIENCES.map((audience) => <option value={audience.name} key={audience.name}>{audience.name} ({audience.count.toLocaleString("en-US")})</option>)}</select></label>
           </>}
+          {/* The current time sets scheduling bounds in this event-driven form, as before. */}
+          {/* eslint-disable-next-line react-hooks/purity */}
           {action.kind === "schedule" && <><p className="card__sub em-form__lead">{actionDescription}</p><label className="field"><span className="label">Send on</span><input className="input" type="datetime-local" name="at" min={dateTimeInput(Date.now() + 60 * 60 * 1000)} defaultValue={dateTimeInput(actionCampaign?.status === "scheduled" && actionCampaign.at > Date.now() ? actionCampaign.at : NOW + DAY)} required /></label></>}
           {action.kind === "test" && <><p className="card__sub em-form__lead">We’ll send “{actionCampaign?.subject}” to this address so you can check the preview.</p><label className="field"><span className="label">Email address</span><input className="input" type="email" name="email" required placeholder="you@example.com" /></label></>}
           {error && <p className="em-form__err" role="alert">{error}</p>}

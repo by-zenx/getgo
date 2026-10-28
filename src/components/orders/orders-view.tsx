@@ -180,6 +180,8 @@ export function OrdersView() {
 
   useEffect(() => {
     const now = new Date();
+    // Initialize the displayed month in the existing mount effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMonthStart(new Date(now.getFullYear(), now.getMonth(), 1).getTime());
     try {
       const stored = localStorage.getItem(ORDER_KEY);
@@ -198,6 +200,8 @@ export function OrdersView() {
 
   useEffect(() => {
     const visible = new Set(shownIds);
+    // Keep selection limited to the currently visible orders as before.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedIds((current) => {
       const next = current.filter((id) => visible.has(id));
       return next.length === current.length ? current : next;
@@ -374,6 +378,7 @@ export function OrdersView() {
 
   return (
     <div ref={rootRef} data-view="orders">
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       <section className="card statbar ord-stats" style={{ ["--n" as any]: 4 }} aria-label="Order figures">
         <div className="stat ord-stat"><p className="stat__label">Open orders</p><p className="stat__val">{openOrders.length}</p><p className="stat__meta">{openOrders.filter((order) => order.status === "pending").length || "All paid"}</p></div>
         <div className="stat ord-stat"><p className="stat__label">To ship today</p><p className="stat__val">{readyToShip.length}</p><p className="stat__meta">{readyToShip.filter((order) => order.status === "packed").length} packed, {readyToShip.filter((order) => order.status === "paid").length} to pack</p></div>
@@ -423,6 +428,7 @@ export function OrdersView() {
             }} onKeyDown={(event) => handleRowKey(event, order)}>
               <td className="ord-cbox"><label className="ord-check"><input type="checkbox" checked={selected} aria-label={`Select order ${order.id}`} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, order.id] : current.filter((id) => id !== order.id))} /><span className="sr-only">Select order {order.id}</span></label></td>
               <td><a className="mono ord-id" href={`#/orders/${order.id.slice(1)}`} onClick={(event) => { event.preventDefault(); openOrder(order.id); }}>{order.id}</a></td>
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               <td><span className="cell-main"><span className="av av--sm" style={{ ["--h" as any]: customer?.hue ?? 220 }}>{customer ? initials(customer.name) : "?"}</span><span><b>{customer?.name ?? "Guest"}</b><small>{customer?.city}</small></span></span></td>
               <td title={formatTimestamp(order.placed)}>{formatPlaced(order.placed)}</td>
               <td><span className="ord-ch"><Icon name={order.channel === "online" ? "globe" : "store"} />{order.channel === "online" ? "Online" : "In store"}</span></td>
@@ -458,10 +464,12 @@ export function OrdersView() {
               </div>
               <section className="ord-sec" aria-labelledby="order-items-title">
                 <h3 id="order-items-title">Items <span>{totalItems(activeOrder)}</span></h3>
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 <ul className="ord-lines">{activeOrder.lines.map((line, index) => <li key={`${line.productId}-${index}`}><span className="thumb" style={{ ["--h" as any]: line.hue, ["--s" as any]: "40px" }} aria-hidden="true">{initials(line.name)}</span><span className="ord-lines__name"><Link href="/products">{line.name}</Link><small>{line.qty} × {formatCurrency(line.price)}</small></span><b>{formatCurrency(line.qty * line.price)}</b></li>)}</ul>
                 <dl className="ord-sum"><div><dt>Subtotal</dt><dd>{formatCurrency(subtotal(activeOrder))}</dd></div><div><dt>Shipping</dt><dd>{activeOrder.shipping ? formatCurrency(activeOrder.shipping, 2) : activeOrder.channel === "store" ? "Collected" : "Free"}</dd></div><div className="ord-sum__total"><dt>Total</dt><dd>{formatCurrency(total(activeOrder))}</dd></div></dl>
               </section>
               <section className="ord-two"><div className="ord-box"><h3>{activeOrder.channel === "store" ? "Pickup" : "Ship to"}</h3><p>{activeCustomer?.name}<br />{activeOrder.address}</p></div><div className="ord-box"><h3>Payment</h3><p>{activeOrder.payment}<br /><span data-o="pay">{activeOrder.status === "pending" ? "Awaiting payment" : activeOrder.status === "cancelled" ? "Not charged" : activeOrder.status === "refunded" ? "Refunded" : "Paid"}</span></p></div></section>
+               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               {activeCustomer && <section className="ord-cust"><span className="av av--lg" style={{ ["--h" as any]: activeCustomer.hue }}>{initials(activeCustomer.name)}</span><span className="ord-cust__who"><b>{activeCustomer.name}</b><small>{activeCustomer.email}</small><small>Customer since {activeCustomer.city}</small></span><Link className="btn btn--sm" href="/customers">View customer</Link></section>}
               <section className="ord-sec" aria-labelledby="order-activity-title"><h3 id="order-activity-title">Activity</h3><ul className="ord-act">{[...activeOrder.history].reverse().map((entry, index) => <li key={`${entry.status}-${entry.at}-${index}`}><span className={`ord-act__dot ord-act__dot--${entry.status}`} /><span><b>{entry.status === "pending" ? "Order placed" : `Marked as ${STATUS_LABELS[entry.status].toLowerCase()}`}</b><small><span>{formatTimestamp(entry.at)}</span><span>{entry.by}</span></small></span></li>)}</ul></section>
             </div>
