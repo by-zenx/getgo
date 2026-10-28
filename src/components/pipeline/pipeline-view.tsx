@@ -4,21 +4,21 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import gsap from "gsap";
 import { Icon } from "@/components/icons/svg-sprite";
 import { calculateLeadScore, createInitialMessageThreads, DEFAULT_LEAD_SCORING, LEAD_SCORING_STORAGE_KEY, SEEDED_EMAIL_LEADS, threadSubScores, leadScoreLabel, leadScoreTone, type LeadScoringSettings, type LeadSubScores, type MessageThread } from "@/data/messages-data";
+import { PIPELINE_BOARD_STORAGE_KEY, PIPELINE_STAGES, PIPELINE_TODAY, type PipelineStageHistory } from "@/data/pipeline-insights-data";
 import { WORKSPACE_MEMBERS } from "@/data/workspace-data";
 import "@/styles/pipeline.css";
 
-const BOARD_KEY = "corbel:pipeline:board";
+const BOARD_KEY = PIPELINE_BOARD_STORAGE_KEY;
 const HANDOFF_KEY = "corbel:pipeline:leads";
-const FIXTURE_NOW = Date.UTC(2026,9,26,12);
-const STAGES = ["New lead", "Contacted", "Qualified", "Proposal", "Negotiation", "Closing"] as const;
+const FIXTURE_NOW = PIPELINE_TODAY;
+const STAGES = PIPELINE_STAGES;
 type Stage = typeof STAGES[number];
 type CloseState = "won" | "lost" | null;
-type Deal = { id: string; name: string; company: string; owner: string; team?: string[]; source: string; score: number; subScores: LeadSubScores; value: number; expectedClose: string; stage: Stage; closedAs: CloseState; closedAt: number | null; previousStage: Stage | null; handoffId?: string };
+type Deal = { id: string; name: string; company: string; owner: string; team?: string[]; source: string; score: number; subScores: LeadSubScores; value: number; expectedClose: string; stage: Stage; closedAs: CloseState; closedAt: number | null; previousStage: Stage | null; createdAt?: string; stageHistory?: PipelineStageHistory; lostReason?: string; handoffId?: string };
 type Handoff = { id: string; name: string; company: string; source: string; score: number; owner: string };
 type Drag = { id: string; pointerId: number; x: number; y: number; originX: number; originY: number; tilt: number; offsetX: number; offsetY: number; width: number; height: number; stage: Stage | null; target: string | null; beforeId?: string };
 type PendingPointer = { id: string; pointerId: number; startX: number; startY: number; offsetX: number; offsetY: number; width: number; height: number };
 
-const stageProbability: Record<Stage, number> = { "New lead": .1, Contacted: .2, Qualified: .4, Proposal: .6, Negotiation: .75, Closing: .9 };
 const STAGE_TONES: Record<Stage,string> = { "New lead":"var(--primary)", Contacted:"var(--c2)", Qualified:"var(--warn)", Proposal:"var(--sea)", Negotiation:"var(--down)", Closing:"var(--text)" };
 const seed: Deal[] = [
   { id:"d1",name:"Ravi Kapoor",company:"The Linen Room",owner:"Mara Reyes",source:"Referral",score:71,subScores:{fit:72,intent:70,engagement:70},value:12400,expectedClose:"2026-11-18",stage:"Contacted",closedAs:null,closedAt:null,previousStage:null },
@@ -39,11 +39,21 @@ const seed: Deal[] = [
   { id:"l2",name:"Marcus Hale",company:"Aldercrest Hotels",owner:"Leo Tanaka",source:"Website",score:38,subScores:{fit:40,intent:36,engagement:37},value:7200,expectedClose:"2026-10-02",stage:"Contacted",closedAs:"lost",closedAt:Date.UTC(2026,9,2),previousStage:"Contacted" },
 ];
 
+function dateOnly(time: number) { return new Date(time).toISOString().slice(0,10); }
+const DAY_MS=24*60*60*1000;
+function stageHistoryThrough(stage:Stage,createdAt:string):PipelineStageHistory {
+  const history:PipelineStageHistory={};const last=STAGES.indexOf(stage);const start=Date.parse(`${createdAt}T12:00:00Z`);
+  STAGES.slice(0,last+1).forEach((name,index)=>{history[name]=dateOnly(start+index*7*DAY_MS);});return history;
+}
+function normalizeDeal(deal:Deal,index=0):Deal {
+  const createdAt=deal.createdAt??dateOnly(FIXTURE_NOW-(35+(index%24))*DAY_MS);
+  return {...deal,createdAt,team:Array.isArray(deal.team)?deal.team:[],stageHistory:{...stageHistoryThrough(deal.stage,createdAt),...deal.stageHistory},lostReason:deal.closedAs==="lost"?(deal.lostReason??"Not given"):undefined};
+}
 function validSettings(): LeadScoringSettings {
   try { const value = JSON.parse(localStorage.getItem(LEAD_SCORING_STORAGE_KEY) ?? "null") as LeadScoringSettings | null; if (value && value.weights && Number.isFinite(value.weights.fit) && Number.isFinite(value.weights.intent) && Number.isFinite(value.weights.engagement)) return value; } catch { /* use defaults */ }
   return DEFAULT_LEAD_SCORING;
 }
-function readBoard(): Deal[] { try { const value = JSON.parse(localStorage.getItem(BOARD_KEY) ?? "null") as Deal[] | null; return Array.isArray(value) ? value : seed; } catch { return seed; } }
+function readBoard(): Deal[] { try { const value = JSON.parse(localStorage.getItem(BOARD_KEY) ?? "null") as Deal[] | null; return Array.isArray(value) ? value.map(normalizeDeal) : seed.map(normalizeDeal); } catch { return seed.map(normalizeDeal); } }
 function readHandoffs(): Handoff[] { try { const value = JSON.parse(localStorage.getItem(HANDOFF_KEY) ?? "[]") as Handoff[]; return Array.isArray(value) ? value.filter((lead) => typeof lead.id === "string") : []; } catch { return []; } }
 function enrichHandoffs(board: Deal[], handoffs: Handoff[], threads: MessageThread[], settings: LeadScoringSettings) {
   const knownThreads = threads.map((thread) => ({ id:`thread:${thread.id}`, subScores:threadSubScores(thread) }));
@@ -51,7 +61,7 @@ function enrichHandoffs(board: Deal[], handoffs: Handoff[], threads: MessageThre
   const known = [...knownThreads,...knownEmails];
   const additions = handoffs.filter((lead) => !board.some((deal) => deal.handoffId === lead.id || deal.id === lead.id)).map((lead): Deal => {
     const subScores = known.find((item) => item.id === lead.id)?.subScores ?? { fit:lead.score,intent:lead.score,engagement:lead.score };
-    return { id:`handoff:${lead.id}`,handoffId:lead.id,name:lead.name,company:lead.company,owner:lead.owner,source:lead.source,score:calculateLeadScore(subScores,settings),subScores,value:12000,expectedClose:"2026-12-15",stage:"New lead",closedAs:null,closedAt:null,previousStage:null };
+    return { id:`handoff:${lead.id}`,handoffId:lead.id,name:lead.name,company:lead.company,owner:lead.owner,team:[],source:lead.source,score:calculateLeadScore(subScores,settings),subScores,value:12000,expectedClose:"2026-12-15",stage:"New lead",closedAs:null,closedAt:null,previousStage:null,createdAt:dateOnly(FIXTURE_NOW),stageHistory:{"New lead":dateOnly(FIXTURE_NOW)} };
   });
   return additions.length ? [...board,...additions] : board;
 }
@@ -64,6 +74,7 @@ export function PipelineView() {
   const rootRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<HTMLDialogElement>(null);
   const addDialogRef = useRef<HTMLDialogElement>(null);
+  const lossDialogRef = useRef<HTMLDialogElement>(null);
   const dropPanelRef = useRef<HTMLDivElement>(null);
   const dropPanelWasActiveRef = useRef(false);
   const dragRef = useRef<Drag | null>(null);
@@ -72,29 +83,30 @@ export function PipelineView() {
   const dragMotionRef = useRef<{ x: (value: number) => void; y: (value: number) => void; rotation: (value: number) => void } | null>(null);
   const flipPositionsRef = useRef<Map<string, DOMRect> | null>(null);
   const suppressClickRef = useRef(false);
-  const [deals,setDeals] = useState<Deal[]>(seed);
+  const [deals,setDeals] = useState<Deal[]>(()=>seed.map(normalizeDeal));
   const [now,setNow] = useState(FIXTURE_NOW);
   const [dragPreview,setDragPreview] = useState<Drag|null>(null);
   const [dropPanelVisible,setDropPanelVisible] = useState(false);
   const [openMenuId,setOpenMenuId] = useState<string|null>(null);
   const [moveMenuOpen,setMoveMenuOpen] = useState(false);
   const [filter,setFilter] = useState<string | null>(null);
+  const [searchQuery,setSearchQuery] = useState("");
   const [settings,setSettings] = useState<LeadScoringSettings>(DEFAULT_LEAD_SCORING);
   const [closeList,setCloseList] = useState<CloseState>(null);
   const [detailId,setDetailId] = useState<string | null>(null);
-  const [insightsOpen,setInsightsOpen] = useState(false);
   const [newDealStage,setNewDealStage] = useState<Stage | null>(null);
+  const [pendingLostId,setPendingLostId] = useState<string|null>(null);
   const [notice,setNotice] = useState("");
   const persist = useCallback((update: (current: Deal[]) => Deal[]) => setDeals((current) => { const next=update(current); try { localStorage.setItem(BOARD_KEY,JSON.stringify(next)); } catch {} return next; }),[]);
   const selected=deals.find((deal)=>deal.id===detailId);
-  const activeOverlay=Boolean(selected || closeList || insightsOpen);
+  const activeOverlay=Boolean(selected || closeList);
 
   useEffect(() => {
     const threads = (() => { try { const saved=JSON.parse(localStorage.getItem("corbel:messages:threads") ?? "null") as MessageThread[] | null; return Array.isArray(saved) ? saved : createInitialMessageThreads(); } catch { return createInitialMessageThreads(); } })();
     const currentSettings=validSettings();
     // Read the current month after hydration so prerendered markup stays deterministic.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setNow(Date.now());
+    setNow(FIXTURE_NOW);
     // Restore browser-only preferences after hydration to keep server and client markup identical.
     setSettings(currentSettings);
     const loaded=enrichHandoffs(readBoard(),readHandoffs(),threads,currentSettings);
@@ -128,6 +140,18 @@ export function PipelineView() {
       }
     }else if(!newDealStage&&dialog.open)dialog.close();
   },[newDealStage]);
+
+  useEffect(() => {
+    const dialog=lossDialogRef.current;
+    if(!dialog)return;
+    if(pendingLostId&&!dialog.open){
+      dialog.showModal();
+      if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches){
+        const box=dialog.querySelector(".modal__box");
+        if(box)gsap.fromTo(box,{opacity:0,y:16,scale:.97},{opacity:1,y:0,scale:1,duration:.34,ease:"power3.out",overwrite:true});
+      }
+    }else if(!pendingLostId&&dialog.open)dialog.close();
+  },[pendingLostId]);
 
   useEffect(() => {
     if(!openMenuId)return;
@@ -189,7 +213,7 @@ export function PipelineView() {
     });
   },[dragPreview?.stage,dragPreview?.beforeId]);
 
-  const closeDeals=useCallback((id:string,state:"won"|"lost")=>persist((current)=>current.map((deal)=>deal.id===id?{...deal,previousStage:deal.stage,closedAs:state,closedAt:Date.now()}:deal)),[persist]);
+  const closeDeals=useCallback((id:string,state:"won"|"lost",lostReason?:string)=>persist((current)=>current.map((deal)=>deal.id===id?{...deal,previousStage:deal.stage,closedAs:state,closedAt:FIXTURE_NOW,lostReason:state==="lost"?(lostReason??"Not given"):undefined}:deal)),[persist]);
   const moveDeal=useCallback((id:string,target:Stage,beforeId?:string)=>{
     const firstPositions=new Map<string,DOMRect>();
     const draggedFirst=rootRef.current?.querySelector<HTMLElement>(".ws-drag-preview")?.getBoundingClientRect();
@@ -197,7 +221,7 @@ export function PipelineView() {
     const first=draggedFirst;
     persist((current)=>{
       const items=[...current]; const source=items.find((deal)=>deal.id===id); if(!source)return current;
-      const moved={...source,stage:target};
+      const moved={...source,stage:target,stageHistory:{...source.stageHistory,[target]:source.stageHistory?.[target]??dateOnly(FIXTURE_NOW)}};
       const without=items.filter((deal)=>deal.id!==id);
       const insertGlobal=beforeId?without.findIndex((deal)=>deal.id===beforeId&&deal.stage===target):-1;
       without.splice(insertGlobal<0?without.length:insertGlobal,0,moved);
@@ -234,7 +258,7 @@ export function PipelineView() {
     const onUp=(event:PointerEvent)=>{
       const pending=pointerRef.current;if(!pending||pending.pointerId!==event.pointerId)return;
       const drag=dragRef.current;
-      if(drag){suppressClickRef.current=true;if(drag.target==="won"||drag.target==="lost")closeDeals(drag.id,drag.target);else if(drag.stage)moveDeal(drag.id,drag.stage,drag.beforeId);window.setTimeout(()=>{suppressClickRef.current=false;},0);}
+      if(drag){suppressClickRef.current=true;if(drag.target==="won")closeDeals(drag.id,"won");else if(drag.target==="lost")setPendingLostId(drag.id);else if(drag.stage)moveDeal(drag.id,drag.stage,drag.beforeId);window.setTimeout(()=>{suppressClickRef.current=false;},0);}
       pointerRef.current=null;dragRef.current=null;dragMotionRef.current=null;document.documentElement.classList.remove("ws-grabbing");setDragPreview(null);
     };
     const onCancel=(event:PointerEvent)=>{
@@ -255,31 +279,32 @@ export function PipelineView() {
   },[closeDeals,moveDeal]);
 
   const members=useMemo(()=>[...WORKSPACE_MEMBERS.map((member)=>({name:member.name,initials:member.initials,hue:member.hue})),...Array.from(new Set(deals.flatMap((deal)=>[deal.owner,...(Array.isArray(deal.team)?deal.team:[])]))).filter((name)=>!WORKSPACE_MEMBERS.some((member)=>member.name===name)).map((name)=>({name,initials:initials(name),hue:210}))],[deals]);
-  const visibleDeals=useMemo(()=>deals.filter((deal)=>!deal.closedAs&&(!filter||deal.owner===filter)),[deals,filter]);
+  const visibleDeals=useMemo(()=>{const query=searchQuery.trim().toLocaleLowerCase();return deals.filter((deal)=>!deal.closedAs&&(!filter||deal.owner===filter)&&(!query||`${deal.name} ${deal.company} ${deal.source} ${deal.stage}`.toLocaleLowerCase().includes(query)));},[deals,filter,searchQuery]);
   const won=deals.filter((deal)=>deal.closedAs==="won"&&(!filter||deal.owner===filter));
   const lost=deals.filter((deal)=>deal.closedAs==="lost"&&(!filter||deal.owner===filter));
   const thisMonth=won.filter((deal)=>deal.closedAt!==null&&new Date(deal.closedAt).getMonth()===new Date(now).getMonth()&&new Date(deal.closedAt).getFullYear()===new Date(now).getFullYear());
-  const openValue=visibleDeals.reduce((sum,deal)=>sum+deal.value,0);
-  const weighted=visibleDeals.reduce((sum,deal)=>sum+deal.value*stageProbability[deal.stage],0);
   const wonValue=thisMonth.reduce((sum,deal)=>sum+deal.value,0);
   const scoreFor=(deal:Deal)=>calculateLeadScore(deal.subScores,settings);
   const closeListDeals=closeList==="won"?won:lost;
   const closeLabel=closeList==="won"?"Won deals":"Lost deals";
   const pendingDeal=dragPreview?deals.find((deal)=>deal.id===dragPreview.id):null;
   const pendingTeam=pendingDeal?dealTeam(pendingDeal).map((name)=>({name,member:members.find((item)=>item.name===name)})):[];
-  const dismissOverlay=()=>{setCloseList(null);setDetailId(null);setInsightsOpen(false);};
-  const closeDeal=(deal:Deal,state:"won"|"lost")=>persist((current)=>current.map((item)=>item.id===deal.id?{...item,previousStage:item.stage,closedAs:state,closedAt:Date.now()}:item));
-  const reopen=(deal:Deal)=>{persist((current)=>current.map((item)=>item.id===deal.id?{...item,stage:item.previousStage??"Contacted",previousStage:null,closedAs:null,closedAt:null}:item));setCloseList(null);};
+  const dismissOverlay=()=>{setCloseList(null);setDetailId(null);};
+  const closeDeal=(deal:Deal,state:"won"|"lost",reason="Not given")=>closeDeals(deal.id,state,reason);
+  const chooseLostReason=(reason:string)=>{if(pendingLostId)closeDeals(pendingLostId,"lost",reason);setPendingLostId(null);};
+  const reopen=(deal:Deal)=>{persist((current)=>current.map((item)=>item.id===deal.id?{...item,stage:item.previousStage??"Contacted",previousStage:null,closedAs:null,closedAt:null,lostReason:undefined}:item));setCloseList(null);};
   const openAdd=(stage:Stage)=>{addDialogRef.current?.querySelector("form")?.reset();setNewDealStage(stage);};
-  const addDeal=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();const form=event.currentTarget;const data=new FormData(form);const name=String(data.get("name")??"").trim();if(!name)return;const owner=String(data.get("owner")??WORKSPACE_MEMBERS[0].name);const stage=String(data.get("stage")??newDealStage??"New lead") as Stage;const value=Number(data.get("value"))||0;const due=new Date();due.setDate(due.getDate()+30);const date=String(data.get("expectedClose")||`${due.getFullYear()}-${String(due.getMonth()+1).padStart(2,"0")}-${String(due.getDate()).padStart(2,"0")}`);const deal:Deal={id:`deal-${Date.now().toString(36)}`,name,company:String(data.get("company")??"").trim(),owner,team:[],source:String(data.get("source")??"Website"),score:50,subScores:{fit:50,intent:50,engagement:50},value,expectedClose:date,stage,closedAs:null,closedAt:null,previousStage:null};persist((current)=>[...current,deal]);form.reset();setNewDealStage(null);setNotice(`${name} added to ${stage}`);window.setTimeout(()=>setNotice(""),2400);};
-  const probabilities:Record<Stage,number>={"New lead":.1,Contacted:.2,Qualified:.4,Proposal:.6,Negotiation:.75,Closing:.9};
+  const addDeal=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();const form=event.currentTarget;const data=new FormData(form);const name=String(data.get("name")??"").trim();if(!name)return;const owner=String(data.get("owner")??WORKSPACE_MEMBERS[0].name);const stage=String(data.get("stage")??newDealStage??"New lead") as Stage;const value=Number(data.get("value"))||0;const due=new Date(FIXTURE_NOW);due.setDate(due.getDate()+30);const date=String(data.get("expectedClose")||`${due.getUTCFullYear()}-${String(due.getUTCMonth()+1).padStart(2,"0")}-${String(due.getUTCDate()).padStart(2,"0")}`);const today=dateOnly(FIXTURE_NOW);const deal:Deal={id:`deal-${Date.now().toString(36)}`,name,company:String(data.get("company")??"").trim(),owner,team:[],source:String(data.get("source")??"Website"),score:50,subScores:{fit:50,intent:50,engagement:50},value,expectedClose:date,stage,closedAs:null,closedAt:null,previousStage:null,createdAt:today,stageHistory:{[stage]:today}};persist((current)=>[...current,deal]);form.reset();setNewDealStage(null);setNotice(`${name} added to ${stage}`);window.setTimeout(()=>setNotice(""),2400);};
   const updateDeal=(id:string,update:Partial<Deal>)=>persist((current)=>current.map((deal)=>deal.id===id?{...deal,...update}:deal));
   const toggleDealTeam=(deal:Deal,name:string)=>{const team=dealTeam(deal).filter((member)=>member!==deal.owner);updateDeal(deal.id,{team:team.includes(name)?team.filter((member)=>member!==name):[...team,name]});};
 
   return <div ref={rootRef} className={`ws pl pipeline-root${dragPreview?" is-dragging":""}`} data-view="pipeline">
-    <section className="card ws-head pl-head" aria-label="Pipeline controls">
-      <div className="ws-head__about"><span className="ws-head__dot" style={{"--dot":"var(--primary)"} as CSSProperties}/><div className="ws-head__txt"><h2 className="ws-head__desc">Deal pipeline</h2><p className="ws-head__meta"><span>{visibleDeals.length} open deals</span><span className="ws-head__n">Weighted forecast {money(weighted)}</span><span className="pl-close-pills"><button className="pill pl-close-pill pl-close-pill--won" type="button" aria-label={`Won: ${thisMonth.length} this month, ${money(wonValue)}`} onClick={()=>setCloseList("won")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z"/></svg><span>Won Â· {thisMonth.length} this month Â· {money(wonValue)}</span></button><button className="pill pl-close-pill pl-close-pill--lost" type="button" aria-label={`Lost: ${lost.length}`} onClick={()=>setCloseList("lost")}><Icon name="x"/><span>Lost Â· {lost.length}</span></button></span></p></div></div>
-      <div className="ws-head__tools"><div className="ws-head__people" role="group" aria-label="Filter by owner"><span className="ws-head__label">Owner</span><div className="ws-people">{members.map((member)=><button key={member.name} className="ws-person" type="button" aria-pressed={filter===member.name} title={member.name} aria-label={`Show ${member.name}'s deals`} onClick={()=>setFilter((current)=>current===member.name?null:member.name)}><span className="av av--sm" style={{"--h":member.hue} as CSSProperties}>{member.initials}</span></button>)}</div><button className="link-btn ws-clear" type="button" hidden={!filter} onClick={()=>setFilter(null)}>Show all</button></div><button className="btn" type="button" onClick={()=>setInsightsOpen(true)}><Icon name="chart"/>Insights</button><button className="btn btn--primary ws-head__add" type="button" onClick={()=>openAdd("New lead")}><Icon name="plus"/>New deal</button></div>
+    <section className="ws-head pl-head pl-toolbar" aria-label="Pipeline controls">
+      <div className="pl-toolbar__start">
+        <label className="pl-search"><Icon name="search"/><input className="input" aria-label="Search deals" placeholder="Search deals..." value={searchQuery} onChange={(event)=>setSearchQuery(event.target.value)}/><button className="pl-search__clear" type="button" aria-label="Clear search" hidden={!searchQuery} onClick={()=>setSearchQuery("")}><Icon name="x"/></button></label>
+        <div className="ws-head__people pl-owner-filter" role="group" aria-label="Filter by owner"><div className="ws-people">{members.map((member)=><button key={member.name} className="ws-person" type="button" aria-pressed={filter===member.name} title={member.name} aria-label={`Show ${member.name}'s deals`} onClick={()=>setFilter((current)=>current===member.name?null:member.name)}><span className="av av--sm" style={{"--h":member.hue} as CSSProperties}>{member.initials}</span></button>)}</div><button className="link-btn ws-clear" type="button" hidden={!filter} onClick={()=>setFilter(null)}>Show all</button></div>
+      </div>
+      <div className="pl-toolbar__end"><span className="pl-deal-count"><b>{visibleDeals.length}</b> deals</span><span className="pl-close-pills"><button className="pill pl-close-pill pl-close-pill--won" type="button" aria-label={`View ${thisMonth.length} deals won this month, totaling ${money(wonValue)}`} title="Won deals" onClick={()=>setCloseList("won")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z"/></svg><span>Won</span></button><button className="pill pl-close-pill pl-close-pill--lost" type="button" aria-label={`View ${lost.length} lost deals`} title="Lost deals" onClick={()=>setCloseList("lost")}><Icon name="x"/><span>Lost</span></button></span><button className="btn btn--primary ws-head__add" type="button" onClick={()=>openAdd("New lead")}><Icon name="plus"/>New deal</button></div>
     </section>
     <div className="pl-board-wrap">
     <div className="ws-scroll pl-scroll" role="region" aria-label="Pipeline stages" tabIndex={-1}>
@@ -368,11 +393,13 @@ export function PipelineView() {
         <footer className="modal__foot"><button className="btn" type="button" onClick={()=>setNewDealStage(null)}>Cancel</button><button className="btn btn--primary" type="submit"><Icon name="plus"/>Add deal</button></footer>
       </form>
     </dialog>
-    <dialog ref={sheetRef} className="sheet" aria-label={insightsOpen?"Pipeline insights":closeList?closeLabel:"Deal details"} onCancel={(event)=>{event.preventDefault();dismissOverlay();}} onClose={dismissOverlay} onClick={(event)=>{if(event.target===sheetRef.current)dismissOverlay();}}>
-      <div className="sheet__box"><header className="sheet__head"><h2>{insightsOpen?"Pipeline insights":closeList?closeLabel:"Deal details"}</h2><button className="icon-btn" type="button" aria-label="Close" onClick={dismissOverlay}><Icon name="x"/></button></header>
+    <dialog ref={lossDialogRef} className="modal" aria-label="Why was it lost?" onCancel={(event)=>{event.preventDefault();chooseLostReason("Not given");}} onClick={(event)=>{if(event.target===lossDialogRef.current)chooseLostReason("Not given");}}>
+      <div className="modal__box"><header className="modal__head"><h2>Why was it lost?</h2><button className="icon-btn" type="button" aria-label="Skip reason" onClick={()=>chooseLostReason("Not given")}><Icon name="x"/></button></header><div className="modal__body"><p className="card__sub">Choose a reason to help understand closed deals.</p><div className="pi-loss-reasons">{["Price","Competitor","No response","Bad timing","No budget"].map(reason=><button className="btn" type="button" key={reason} onClick={()=>chooseLostReason(reason)}>{reason}</button>)}</div></div><footer className="modal__foot"><button className="btn btn--ghost" type="button" onClick={()=>chooseLostReason("Not given")}>Skip</button></footer></div>
+    </dialog>
+    <dialog ref={sheetRef} className="sheet" aria-label={closeList?closeLabel:"Deal details"} onCancel={(event)=>{event.preventDefault();dismissOverlay();}} onClose={dismissOverlay} onClick={(event)=>{if(event.target===sheetRef.current)dismissOverlay();}}>
+      <div className="sheet__box"><header className="sheet__head"><h2>{closeList?closeLabel:"Deal details"}</h2><button className="icon-btn" type="button" aria-label="Close" onClick={dismissOverlay}><Icon name="x"/></button></header>
         <div className="sheet__body">
-          {insightsOpen&&<div className="pl-insights"><article className="card pl-insight"><span className="stat__label">Open value</span><b className="stat__val">{money(openValue)}</b></article><article className="card pl-insight"><span className="stat__label">Weighted value</span><b className="stat__val">{money(weighted)}</b></article><article className="card pl-insight"><span className="stat__label">Won this month</span><b className="stat__val">{money(wonValue)}</b></article><article className="card pl-insight"><span className="stat__label">Waiting to be qualified</span><b className="stat__val">{visibleDeals.filter((deal)=>deal.stage==="New lead").length}</b></article><section className="card pl-insight"><div className="card__head"><h3 className="card__title">Weighted forecast by stage</h3></div><ul className="pl-probabilities">{STAGES.map((stage)=><li key={stage}><span>{stage}</span><b>{Math.round(probabilities[stage]*100)}%</b><small>{money(visibleDeals.filter((deal)=>deal.stage===stage).reduce((sum,deal)=>sum+deal.value*probabilities[stage],0))}</small></li>)}</ul></section></div>}
-          {closeList&&<ul className="pl-closed-list">{closeListDeals.map((deal)=><li key={deal.id}><span><b>{deal.name}</b><small>{deal.company} Â· {money(deal.value)}</small></span><button className="btn btn--sm" type="button" onClick={()=>reopen(deal)}>Reopen</button></li>)}{!closeListDeals.length&&<li className="card__sub">No closed deals yet.</li>}</ul>}
+          {closeList&&<ul className="pl-closed-list">{closeListDeals.map((deal)=><li key={deal.id}><span><b>{deal.name}</b><small>{deal.company} Â· {money(deal.value)}{deal.closedAs==="lost"?` · ${deal.lostReason??"Not given"}`:""}</small></span><button className="btn btn--sm" type="button" onClick={()=>reopen(deal)}>Reopen</button></li>)}{!closeListDeals.length&&<li className="card__sub">No closed deals yet.</li>}</ul>}
           {selected && <div className="ws-sh pl-detail" style={{ '--pl-stage-tone': STAGE_TONES[selected.stage] } as CSSProperties}>
             <article className="pl-detail-preview">
               <div className="pl-detail-preview__top"><span>Closes {new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(`${selected.expectedClose}T12:00:00`))}</span><span className="pl-detail-preview__stage"><i />{selected.stage}</span></div>
@@ -403,3 +430,5 @@ export function PipelineView() {
     </dialog>
   </div>;
 }
+
+

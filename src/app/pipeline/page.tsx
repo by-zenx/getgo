@@ -5,5 +5,5 @@ import { PipelineView } from "@/components/pipeline/pipeline-view";
 export const metadata: Metadata = { title: "Pipeline | Corbel" };
 
 export default function PipelinePage() {
-  return <><PageHeading title="Pipeline" /><PipelineView /></>;
+  return <><PageHeading title="Pipeline" animate={false} /><PipelineView /></>;
 }

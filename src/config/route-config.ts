@@ -23,6 +23,14 @@ export interface SubtabConfig {
 }
 
 export const SUBTAB_GROUPS: Record<string, SubtabConfig> = {
+  pipeline: {
+    key: "pipeline",
+    items: [
+      { href: "/pipeline", label: "Board", key: "pipeline-board", exact: true },
+      { href: "/pipeline/insights", label: "Insights", key: "pipeline-insights", exact: true },
+      { href: "/pipeline/settings", label: "Settings", key: "pipeline-settings", exact: true },
+    ],
+  },
   customers: {
     key: "customers",
     items: [

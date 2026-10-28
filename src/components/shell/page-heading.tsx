@@ -8,13 +8,15 @@ import { LiveIndicator } from "./live-indicator";
 
 interface PageHeadingProps {
   title: string;
+  animate?: boolean;
 }
 
-export function PageHeading({ title }: PageHeadingProps) {
+export function PageHeading({ title, animate = true }: PageHeadingProps) {
   const headingRef = useRef<HTMLDivElement>(null);
 
   useGSAP(
     () => {
+      if (!animate) return;
       const isReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (isReduced) return;
 
@@ -38,7 +40,7 @@ export function PageHeading({ title }: PageHeadingProps) {
         }
       );
     },
-    { dependencies: [title], scope: headingRef }
+    { dependencies: [title, animate], scope: headingRef }
   );
 
   return (
