@@ -1,9 +1,8 @@
 [data-view="pipeline"] .pl-head{margin-bottom:18px}
 [data-view="pipeline"] .pl-scroll{width:100%;min-width:0;margin:0;padding:2px 0 22px;overflow-x:auto;overflow-y:visible}
 [data-view="pipeline"] .pl-board{grid-template-columns:repeat(6,minmax(250px,1fr));align-items:stretch;gap:12px;display:grid;width:max-content;min-width:max-content}
-[data-view="pipeline"] .pl-col{height:auto;min-height:440px;overflow:visible;align-self:stretch}
-[data-view="pipeline"] .pl-col.is-drop-ready{transition:background-color .2s,box-shadow .2s}
-[data-view="pipeline"] .pl-col.is-drop-target{background:color-mix(in srgb,var(--primary-soft) 75%,var(--well));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--primary) 35%,transparent)}
+[data-view="pipeline"] .pl-col{box-sizing:border-box;height:auto;min-height:440px;overflow:visible;align-self:stretch;border:1px solid var(--line-2);box-shadow:none}
+[data-view="pipeline"] .pl-col[data-drag-over="true"]{border:2px solid var(--pl-stage-tone);box-shadow:none}
 [data-view="pipeline"] .pl-card{touch-action:none;min-width:0}
 [data-view="pipeline"] .pl-card>*{min-width:0}
 [data-view="pipeline"] .pl-card.is-dragging{opacity:.55}
@@ -87,3 +86,4 @@
 @media (width<=920px){[data-view="pipeline"] .pl-board{gap:10px}}
 @media (width<=640px){[data-view="pipeline"] .pl-head{align-items:flex-start}.pl-head .ws-head__tools{gap:10px;width:100%}[data-view="pipeline"] .pl-col{min-height:400px}[data-view="pipeline"] .pl-stage-value{font-size:var(--fs-2xs)}[data-view="pipeline"] .pl-drop-panel{right:8px;width:min(144px,38vw);height:min(82dvh,calc(100dvh - 176px));gap:10px}[data-view="pipeline"] .pl-drop-tile{padding:12px 8px}[data-view="pipeline"] .pl-drop-tile>svg,[data-view="pipeline"] .pl-drop-tile>.ico{width:28px;height:28px}}
 @media (prefers-reduced-motion:reduce){[data-view="pipeline"] .pl-drop-tile{animation:none!important;transition:none}[data-view="pipeline"] .pl-card,[data-view="pipeline"] .pl-ph{transition:none}[data-view="pipeline"] .pl-board-wrap{transition:none}}
+:root[data-palette="mono"] [data-view="pipeline"] .pl-col{--pl-stage-tone:var(--primary)!important}

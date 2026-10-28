@@ -285,7 +285,7 @@ export function PipelineView() {
           const cards = visibleDeals.filter((deal) => deal.stage === stage);
           const stageValue = cards.reduce((sum, deal) => sum + deal.value, 0);
           const stageTones = ['var(--primary)', 'var(--c2)', 'var(--warn)', 'var(--sea)', 'var(--down)', 'var(--text)'];
-          return <section className={`ws-col pl-col pl-col--${index}`} data-stage={stage} key={stage} aria-label={`${stage} deals`} style={{ '--pl-stage-tone': stageTones[index] } as CSSProperties}>
+          return <section className="ws-col pl-col" data-stage={stage} data-drag-over={dragPreview?.stage === stage} key={stage} aria-label={`${stage} deals`} style={{ '--pl-stage-tone': stageTones[index] } as CSSProperties}>
             <header className="ws-col__head">
               <span className="ws-col__dot pl-stage-dot" aria-hidden="true" />
               <h2 className="ws-col__name">{stage}</h2>
