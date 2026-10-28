@@ -8,7 +8,7 @@ import { MAIN_TABS } from "@/config/route-config";
 
 export function NavTabs() {
   const pathname = usePathname();
-  const [messageUnread, setMessageUnread] = useState(2);
+  const [leadUnread, setLeadUnread] = useState(2);
   const trackRef = useRef<HTMLDivElement>(null);
   const pillRef = useRef<HTMLSpanElement>(null);
   const coordsRef = useRef<{ l: number; r: number } | null>(null);
@@ -23,9 +23,9 @@ export function NavTabs() {
     const refreshUnread = () => {
       try {
         const saved = localStorage.getItem("corbel:messages:threads");
-        if (!saved) return setMessageUnread(2);
+        if (!saved) return setLeadUnread(2);
         const threads = JSON.parse(saved) as { unread?: boolean; done?: boolean }[];
-        setMessageUnread(threads.filter((thread) => thread.unread && !thread.done).length);
+        setLeadUnread(threads.filter((thread) => thread.unread && !thread.done).length);
       } catch { /* Keep the default count if storage is unavailable. */ }
     };
     refreshUnread();
@@ -125,7 +125,7 @@ export function NavTabs() {
               {tab.label}
               {tab.count !== undefined && (
                 <span className="tab__count" data-count={tab.route}>
-                  {tab.route === "messages" ? messageUnread : tab.count}
+                  {tab.route === "leads" ? leadUnread : tab.count}
                 </span>
               )}
             </Link>
@@ -138,7 +138,7 @@ export function NavTabs() {
             <span key={tab.route}>
               {tab.label}
               {tab.count !== undefined && (
-                <span className="tab__count">{tab.route === "messages" ? messageUnread : tab.count}</span>
+                <span className="tab__count">{tab.route === "leads" ? leadUnread : tab.count}</span>
               )}
             </span>
           ))}

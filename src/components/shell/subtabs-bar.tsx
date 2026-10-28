@@ -25,7 +25,7 @@ export function SubtabsBar() {
     const pill = pillRef.current;
     if (!track || !pill) return;
 
-    const activeItem = group.items.find((i) => pathname === i.href || (i.href !== "/" && pathname.startsWith(i.href))) || group.items[0];
+    const activeItem = group.items.find((i) => i.exact ? pathname === i.href : pathname === i.href || (i.href !== "/" && pathname.startsWith(`${i.href}/`))) || group.items[0];
     const targetEl = track.querySelector<HTMLAnchorElement>(`[data-key="${activeItem.key}"]`);
 
     if (!targetEl || !targetEl.offsetWidth) {
@@ -92,7 +92,7 @@ export function SubtabsBar() {
     <nav className="subtabs" aria-label="In this section">
       <div ref={trackRef} className="subtabs__track">
         {group.items.map((item) => {
-          const isCurrent = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+          const isCurrent = item.exact ? pathname === item.href : pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`));
           return (
             <Link
               key={item.key}

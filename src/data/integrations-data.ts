@@ -18,7 +18,7 @@ export const INTEGRATION_PERMISSIONS: Record<IntegrationCategory, string[]> = {
   Shipping: ["Read orders and shipping addresses", "Buy and print shipping labels", "Send tracking updates to customers"],
   Accounting: ["Read orders, refunds and payouts", "Read tax and currency settings", "Create entries in your books"],
   Marketing: ["Read catalog items, prices and availability", "Read which customers agreed to marketing", "Track sales from campaigns"],
-  Support: ["Read customer profiles and orders", "Create conversations in Messages", "Add notes to customer profiles"],
+  Support: ["Read customer profiles and orders", "Create conversations in Leads", "Add notes to customer profiles"],
 };
 
 const NOW = Date.UTC(2026, 9, 26, 12);
@@ -28,7 +28,7 @@ const FIXTURES: IntegrationRecord[] = [
   { id: "i2", name: "Stockroom POS", cat: "Point of sale", desc: "Sell in your shops; stock syncs both ways.", connected: true, hue: 160, synced: NOW - 5 * DAY },
   { id: "i3", name: "Parcelpoint", cat: "Shipping", desc: "Print labels, compare carriers, track parcels.", connected: true, hue: 30, synced: NOW - 18 * DAY },
   { id: "i4", name: "Ledgerly", cat: "Accounting", desc: "Push every sale and refund to your books.", connected: false, hue: 140 },
-  { id: "i5", name: "Chatterbox", cat: "Support", desc: "Website chat that lands in your Messages inbox.", connected: true, hue: 181, synced: NOW - DAY },
+  { id: "i5", name: "Chatterbox", cat: "Support", desc: "Website chat that lands in your Leads inbox.", connected: true, hue: 181, synced: NOW - DAY },
   { id: "i6", name: "Pinpoint Ads", cat: "Marketing", desc: "Sync your catalogue to shopping ads.", connected: false, hue: 350 },
   { id: "i7", name: "Taxwise", cat: "Accounting", desc: "Sales tax for every state, filed for you.", connected: false, hue: 200 },
   { id: "i8", name: "Inkwell Reviews", cat: "Marketing", desc: "Collect customer reviews and display them alongside catalog items.", connected: true, hue: 45, synced: NOW - 3 * DAY },

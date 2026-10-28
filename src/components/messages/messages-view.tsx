@@ -7,9 +7,10 @@ import { useGSAP } from "@gsap/react";
 import { Icon } from "@/components/icons/svg-sprite";
 import { moveSegmentPill } from "@/lib/segment-motion";
 import { createInitialOrders } from "@/data/orders-data";
-import { createInitialMessageThreads, MESSAGE_CONTACTS, MESSAGE_QUICK_REPLIES, type ConversationMessage, type MessageChannel, type MessageContact, type MessageThread } from "@/data/messages-data";
+import { createInitialMessageThreads, DEFAULT_LEAD_SCORING, leadOwner, leadScore, leadScoreLabel, leadScoreTone, LEAD_SCORING_STORAGE_KEY, MESSAGE_CONTACTS, MESSAGE_QUICK_REPLIES, type ConversationMessage, type LeadScoringSettings, type MessageChannel, type MessageContact, type MessageThread } from "@/data/messages-data";
 
 const STORAGE_KEY = "corbel:messages:threads";
+const PIPELINE_KEY = "corbel:pipeline:leads";
 const FIXTURE_NOW = Date.UTC(2026, 9, 26, 12);
 type InboxFilter = "all" | "unread" | "done";
 type PaneMode = "list" | "thread";
@@ -20,7 +21,7 @@ const FILTERS: { value: InboxFilter; label: string }[] = [
 function contactFor(id: string) { return MESSAGE_CONTACTS.find((contact) => contact.id === id); }
 function orderTotal(order: ReturnType<typeof createInitialOrders>[number]) { return order.lines.reduce((sum, line) => sum + line.price * line.qty, 0) + order.shipping; }
 function initials(name: string) { return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase(); }
-function channelName(channel: MessageChannel) { return ({ chat: "Website chat", email: "Email", instagram: "Instagram" })[channel]; }
+function channelName(channel: MessageChannel) { return ({ chat: "Website", email: "Email", instagram: "Instagram" })[channel]; }
 function channelIcon(channel: MessageChannel) { return ({ chat: "chat", email: "mail", instagram: "globe" })[channel]; }
 function currency(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value); }
 function safeThreads(value: string): MessageThread[] | null {
@@ -28,6 +29,16 @@ function safeThreads(value: string): MessageThread[] | null {
     const parsed = JSON.parse(value) as MessageThread[];
     return Array.isArray(parsed) && parsed.every((thread) => typeof thread.id === "string" && Array.isArray(thread.msgs)) ? parsed : null;
   } catch { return null; }
+}
+function readLeadScoringSettings(): LeadScoringSettings {
+  try {
+    const settings = JSON.parse(localStorage.getItem(LEAD_SCORING_STORAGE_KEY) ?? "null") as LeadScoringSettings | null;
+    if (settings && Object.values(settings.weights).every(Number.isFinite)
+      && settings.weights.fit + settings.weights.intent + settings.weights.engagement === 100
+      && Number.isInteger(settings.warmCutoff) && Number.isInteger(settings.hotCutoff)
+      && settings.warmCutoff >= 0 && settings.hotCutoff > settings.warmCutoff && settings.hotCutoff <= 100) return settings;
+  } catch { /* Use the default scoring setup when storage is unavailable. */ }
+  return DEFAULT_LEAD_SCORING;
 }
 function sameDate(a: number, b: number) { return new Date(a).toISOString().slice(0, 10) === new Date(b).toISOString().slice(0, 10); }
 function formatTime(timestamp: number, now = FIXTURE_NOW) {
@@ -95,6 +106,8 @@ export function MessagesView({ initialThreadId }: { initialThreadId?: string } =
   const [typingThreadId, setTypingThreadId] = useState<string | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
   const [notice, setNotice] = useState<{ text: string; undo?: () => void } | null>(null);
+  const [pipelineIds, setPipelineIds] = useState<string[]>([]);
+  const [scoreSettings, setScoreSettings] = useState<LeadScoringSettings>(DEFAULT_LEAD_SCORING);
 
   const activeThread = threads.find((thread) => thread.id === activeId) ?? null;
   const activeContact = activeThread ? contactFor(activeThread.customerId) : undefined;
@@ -133,6 +146,27 @@ export function MessagesView({ initialThreadId }: { initialThreadId?: string } =
         if (parsed) setThreads(parsed);
       } else localStorage.setItem(STORAGE_KEY, JSON.stringify(createInitialMessageThreads()));
     } catch { /* Keep the inbox available when browser storage is blocked. */ }
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => setScoreSettings(readLeadScoringSettings());
+    // Restore saved scoring settings after mount.
+    refresh();
+    window.addEventListener("storage", refresh);
+    window.addEventListener("corbel:lead-scoring-updated", refresh);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("corbel:lead-scoring-updated", refresh);
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PIPELINE_KEY) ?? "[]") as { id?: string }[];
+      // Restore the persisted pipeline handoff after mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPipelineIds(saved.filter((lead) => typeof lead.id === "string").map((lead) => lead.id!));
+    } catch { setPipelineIds([]); }
   }, []);
 
   useEffect(() => {
@@ -243,6 +277,27 @@ export function MessagesView({ initialThreadId }: { initialThreadId?: string } =
     const wasDone = activeThread.done;
     updateThread(activeThread.id, (thread) => ({ ...thread, done: !thread.done, unread: wasDone ? thread.unread : false }));
     announce(wasDone ? "Moved back to the inbox" : "Marked as done", () => updateThread(activeThread.id, (thread) => ({ ...thread, done: wasDone, unread: wasDone ? thread.unread : activeThread.unread })));
+  };
+
+  const addActiveToPipeline = () => {
+    if (!activeThread || !activeContact) return;
+    const id = `thread:${activeThread.id}`;
+    const lead = {
+      id,
+      name: activeContact.name,
+      company: activeContact.company ?? activeContact.name,
+      source: channelName(activeThread.channel),
+      score: leadScore(activeThread, scoreSettings),
+      owner: leadOwner(activeThread),
+    };
+    try {
+      const saved = JSON.parse(localStorage.getItem(PIPELINE_KEY) ?? "[]") as typeof lead[];
+      const next = [...saved.filter((item) => item.id !== id), lead];
+      localStorage.setItem(PIPELINE_KEY, JSON.stringify(next));
+      window.dispatchEvent(new Event("corbel:pipeline-leads-updated"));
+    } catch { /* The inbox remains usable if local storage is blocked. */ }
+    setPipelineIds((current) => current.includes(id) ? current : [...current, id]);
+    announce(`${activeContact.name} added to pipeline`);
   };
 
   const generatedReply = (thread: MessageThread, contact?: MessageContact) => {
@@ -356,7 +411,7 @@ export function MessagesView({ initialThreadId }: { initialThreadId?: string } =
                 return <li key={thread.id} className={`msg-row${thread.unread && !thread.done ? " is-unread" : ""}`} data-id={thread.id}>
                   <button className="msg-row__open" type="button" data-open={thread.id} aria-current={thread.id === activeId} onClick={() => selectThread(thread)}>
                     <span className="msg-row__av"><Avatar contact={contact} /><span className="msg-row__ch" title={channelName(thread.channel)}><Icon name={channelIcon(thread.channel)} /></span></span>
-                    <span className="msg-row__main"><span className="msg-row__top"><b className="msg-row__name">{contact?.name ?? "Unknown customer"}</b><span className="msg-row__time">{last ? formatTime(last.at) : "New"}</span></span><span className="msg-row__subj">{thread.subject}</span><span className="msg-row__prev">{summarize(thread)}</span></span>
+                    <span className="msg-row__main"><span className="msg-row__top"><b className="msg-row__name">{contact?.name ?? "Unknown customer"}</b><span className={`pill pill--${leadScoreTone(leadScore(thread, scoreSettings), scoreSettings)}`}>{leadScore(thread, scoreSettings)} · {leadScoreLabel(leadScore(thread, scoreSettings), scoreSettings)}</span><span className="msg-row__time">{last ? formatTime(last.at) : "New"}</span></span><span className="msg-row__subj">{thread.subject}</span><span className="msg-row__prev">{summarize(thread)}</span></span>
                     <span className="sr-only">{thread.unread && !thread.done ? ", unread" : ""}{thread.starred ? ", starred" : ""}, {channelName(thread.channel)}</span>
                   </button>
                   <span className="msg-row__dot" aria-hidden="true" />
@@ -370,16 +425,17 @@ export function MessagesView({ initialThreadId }: { initialThreadId?: string } =
         <section className="msg-pane msg-conv" aria-label="Conversation">
           <header className="msg-conv__head" hidden={!activeThread}>
             <button className="icon-btn msg-back" type="button" aria-label="Back to conversations" onClick={() => setPane("list")}><Icon name="chev" className="msg-back__ico" /></button>
-            <div className="msg-conv__who">{activeThread && <><Avatar contact={activeContact} /><div className="msg-conv__txt"><div className="msg-conv__line"><h2 className="msg-conv__name">{activeContact?.name ?? "Unknown customer"}</h2>{orders[0] && <Link className="pill pill--blue pill--plain msg-conv__order" href="/orders"><Icon name="box" />Order {orders[0].id}</Link>}</div><p className="msg-conv__meta"><span className="msg-conv__ch"><Icon name={channelIcon(activeThread.channel)} />{channelName(activeThread.channel)}</span><span className="msg-conv__subj">{activeThread.subject}</span></p></div></>}</div>
+            <div className="msg-conv__who">{activeThread && <><Avatar contact={activeContact} /><div className="msg-conv__txt"><div className="msg-conv__line"><h2 className="msg-conv__name">{activeContact?.name ?? "Unknown customer"}</h2><span className={`pill pill--${leadScoreTone(leadScore(activeThread, scoreSettings), scoreSettings)}`}>{leadScore(activeThread, scoreSettings)} · {leadScoreLabel(leadScore(activeThread, scoreSettings), scoreSettings)}</span>{orders[0] && <Link className="pill pill--blue pill--plain msg-conv__order" href="/orders"><Icon name="box" />Order {orders[0].id}</Link>}</div><p className="msg-conv__meta"><span className="msg-conv__ch"><Icon name={channelIcon(activeThread.channel)} />{channelName(activeThread.channel)}</span><span className="msg-conv__subj">{activeThread.subject}</span></p></div></>}</div>
             <div className="msg-conv__acts">
               <button className={`icon-btn msg-act-star${activeThread?.starred ? " is-on" : ""}`} type="button" aria-pressed={Boolean(activeThread?.starred)} aria-label={activeThread?.starred ? "Unstar conversation" : "Star conversation"} onClick={() => activeThread && toggleStar(activeThread.id)}><Icon name="star" /></button>
               <button className="icon-btn" type="button" aria-label="Mark as unread" title="Mark as unread" onClick={markUnread}><Icon name="mail" /></button>
               <button className={`btn btn--sm msg-done${activeThread?.done ? " is-done" : ""}`} type="button" aria-pressed={Boolean(activeThread?.done)} onClick={toggleDone}><Icon name={activeThread?.done ? "arrow-up" : "check"} /><span>{activeThread?.done ? "Reopen" : "Mark done"}</span></button>
+              <button className={`btn btn--sm msg-done${activeThread && pipelineIds.includes(`thread:${activeThread.id}`) ? " is-done" : ""}`} type="button" aria-label={activeThread && pipelineIds.includes(`thread:${activeThread.id}`) ? "Lead is in pipeline" : "Add lead to pipeline"} title={activeThread && pipelineIds.includes(`thread:${activeThread.id}`) ? "In pipeline" : "Add to pipeline"} disabled={!activeThread || pipelineIds.includes(`thread:${activeThread.id}`)} onClick={addActiveToPipeline}><Icon name={activeThread && pipelineIds.includes(`thread:${activeThread.id}`) ? "check" : "plus"} /><span>{activeThread && pipelineIds.includes(`thread:${activeThread.id}`) ? "In pipeline" : "Add to pipeline"}</span></button>
               <button className="icon-btn msg-info" type="button" aria-label="Customer details" aria-haspopup="dialog" onClick={() => setInfoOpen(true)}><Icon name="info" /></button>
             </div>
           </header>
           <div className="msg-scroll" hidden={!activeThread}>
-            <div ref={logRef} className="msg-log" role="log" aria-live="polite" aria-relevant="additions" aria-label={activeContact ? `Messages with ${activeContact.name}` : "Messages"}>
+            <div ref={logRef} className="msg-log" role="log" aria-live="polite" aria-relevant="additions" aria-label={activeContact ? `Lead conversation with ${activeContact.name}` : "Lead conversations"}>
               {activeThread && (groupedMessages.length ? groupedMessages.map((group, index) => <div key={`${group.day}-${group.from}-${index}`} className="msg-message-group"><div className="msg-day"><span>{group.day}</span></div><div className={`msg-grp msg-grp--${group.from}`}>{group.from === "them" && <span className="msg-grp__av"><Avatar contact={activeContact} size="sm" /></span>}<div className="msg-grp__col">{group.messages.map((message) => <p key={message.id} className="msg-b"><span className="sr-only">{group.from === "them" ? activeContact?.name ?? "Customer" : "You"}: </span>{message.text}</p>)}<span className="msg-grp__meta"><span className="msg-grp__who">{group.from === "them" ? activeContact?.name ?? "Customer" : group.by ? "Priya Shah" : "You"}</span><time dateTime={new Date(group.messages.at(-1)!.at).toISOString()}>{formatTime(group.messages.at(-1)!.at)}</time></span></div></div></div>) : <div className="msg-log__empty"><Avatar contact={activeContact} size="lg" /><b>Start the conversation</b><span>Write to {activeContact?.name ?? "them"} below. They’ll get it by {activeThread.channel === "email" ? "email" : channelName(activeThread.channel).toLowerCase()}.</span></div>)}
             </div>
             {typingThreadId === activeThread?.id && <div className="msg-typing" aria-live="polite"><Avatar contact={activeContact} size="sm" /><span className="msg-typing__b"><i /><i /><i /></span><span className="sr-only">{activeContact?.name ?? "Customer"} is typing</span></div>}

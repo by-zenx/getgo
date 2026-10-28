@@ -1,11 +1,5 @@
-import { PageHeading } from "@/components/shell/page-heading";
-import { EmailView } from "@/components/email/email-view";
+import { redirect } from "next/navigation";
 
-export default function EmailPage() {
-  return (
-    <>
-      <PageHeading title="Email" />
-      <EmailView />
-    </>
-  );
+export default function LegacyEmailPage() {
+  redirect("/leads/email");
 }

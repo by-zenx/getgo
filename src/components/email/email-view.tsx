@@ -7,6 +7,7 @@ import { Icon } from "@/components/icons/svg-sprite";
 import { moveSegmentPill } from "@/lib/segment-motion";
 import { createInitialProducts } from "@/data/products-data";
 import { createInitialEmailCampaigns, EMAIL_AUDIENCES, type CampaignStatus, type EmailCampaign } from "@/data/email-data";
+import { calculateLeadScore, DEFAULT_LEAD_SCORING, leadScoreLabel, leadScoreTone, LEAD_SCORING_STORAGE_KEY, SEEDED_EMAIL_LEADS, type LeadScoringSettings } from "@/data/messages-data";
 
 const STORAGE_KEY = "corbel:email:campaigns";
 const NOW = Date.UTC(2026, 9, 26, 12);
@@ -51,6 +52,16 @@ function readCampaigns(value: string): EmailCampaign[] | null {
     const parsed = JSON.parse(value) as EmailCampaign[];
     return Array.isArray(parsed) && parsed.every((item) => typeof item.id === "string" && typeof item.name === "string" && ["sent", "scheduled", "draft"].includes(item.status)) ? parsed : null;
   } catch { return null; }
+}
+function readLeadScoringSettings(): LeadScoringSettings {
+  try {
+    const settings = JSON.parse(localStorage.getItem(LEAD_SCORING_STORAGE_KEY) ?? "null") as LeadScoringSettings | null;
+    if (settings && Object.values(settings.weights).every(Number.isFinite)
+      && settings.weights.fit + settings.weights.intent + settings.weights.engagement === 100
+      && Number.isInteger(settings.warmCutoff) && Number.isInteger(settings.hotCutoff)
+      && settings.warmCutoff >= 0 && settings.hotCutoff > settings.warmCutoff && settings.hotCutoff <= 100) return settings;
+  } catch { /* Use the default scoring setup when storage is unavailable. */ }
+  return DEFAULT_LEAD_SCORING;
 }
 
 function FilterTabs({ value, onChange }: { value: CampaignFilter; onChange: (value: CampaignFilter) => void }) {
@@ -156,6 +167,7 @@ export function EmailView() {
   const [action, setAction] = useState<DialogAction | null>(null);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
+  const [scoreSettings, setScoreSettings] = useState<LeadScoringSettings>(DEFAULT_LEAD_SCORING);
   const [campaignSerial, setCampaignSerial] = useState(7);
 
   const selected = campaigns.find((campaign) => campaign.id === selectedId) ?? null;
@@ -188,6 +200,18 @@ export function EmailView() {
         }
       } else localStorage.setItem(STORAGE_KEY, JSON.stringify(createInitialEmailCampaigns()));
     } catch { /* Keep the campaign view available if storage is blocked. */ }
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => setScoreSettings(readLeadScoringSettings());
+    // Restore saved scoring settings after mount.
+    refresh();
+    window.addEventListener("storage", refresh);
+    window.addEventListener("corbel:lead-scoring-updated", refresh);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("corbel:lead-scoring-updated", refresh);
+    };
   }, []);
 
   const persist = (next: EmailCampaign[]) => {
@@ -369,17 +393,19 @@ export function EmailView() {
       <div className="card__head"><h2 className="card__title" id="em-list-h">Campaigns</h2><span className="card__actions card__sub" aria-live="polite">{filtered.length === campaigns.length ? `${campaigns.length} campaigns` : `${filtered.length} of ${campaigns.length}`}</span></div>
       <div className="em-cols" aria-hidden="true"><span>Campaign</span><span>Status</span><span>Audience</span><span>Date</span><span>Opens</span><span>Clicks</span><span className="em-num">Revenue</span></div>
       <ul ref={rowsRef} className="em-rows">
-        {filtered.length ? filtered.map((campaign) => <li key={campaign.id}>
+        {filtered.length ? filtered.map((campaign) => {
+          const scoredLead = SEEDED_EMAIL_LEADS.find((lead) => lead.campaignId === campaign.id);
+          return <li key={campaign.id}>
           <button className="em-row" type="button" onClick={() => { setPreviewMode("desktop"); setSelectedId(campaign.id); }}>
             <span className="em-row__name"><span className="thumb" style={{ "--h": campaign.hue } as CSSProperties}>{campaign.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span><span><b>{campaign.name}</b><small>{campaign.subject}</small></span></span>
             <span className="em-row__status"><span className={`pill pill--${STATUS[campaign.status].tone}`}>{STATUS[campaign.status].label}</span></span>
-            <span className="em-row__aud"><span>{campaign.audience}</span><small>{campaign.recipients.toLocaleString("en-US")} people</small></span>
+            <span className="em-row__aud"><span>{campaign.audience}</span><small>{campaign.recipients.toLocaleString("en-US")} people</small>{scoredLead && (() => { const score = calculateLeadScore(scoredLead, scoreSettings); return <span className={`pill pill--${leadScoreTone(score, scoreSettings)}`} aria-label={`${scoredLead.name}: lead score ${score}, ${leadScoreLabel(score, scoreSettings)}`}>{scoredLead.name.split(" ")[0]} {score} · {leadScoreLabel(score, scoreSettings)}</span>; })()}</span>
             <span className="em-row__date"><span>{campaign.status === "sent" ? `Sent ${shortDate(campaign.at)}` : campaign.status === "scheduled" ? <><Icon name="clock" className="em-ico-sm" />{shortDate(campaign.at)}</> : "Not sent"}</span><small>{campaign.status === "sent" ? timeText(campaign.at) : campaign.status === "scheduled" ? timeText(campaign.at) : "Draft"}</small></span>
             <span className={`em-rate${campaign.status === "sent" ? " em-rate--open" : " em-rate--none"}`}><span className="em-rate__lbl">Opens</span><b>{campaign.status === "sent" ? `${(campaign.opens * 100).toFixed(1)}%` : "—"}</b>{campaign.status === "sent" && <span className="meter"><span className="meter__fill" data-v={campaign.opens} style={{ transform: `scaleX(${campaign.opens})`, transformOrigin: "left" }} /></span>}</span>
             <span className={`em-rate em-rate--click${campaign.status !== "sent" ? " em-rate--none" : ""}`}><span className="em-rate__lbl">Clicks</span><b>{campaign.status === "sent" ? `${(campaign.clicks * 100).toFixed(1)}%` : "—"}</b>{campaign.status === "sent" && <span className="meter"><span className="meter__fill" data-v={campaign.clicks} style={{ transform: `scaleX(${campaign.clicks})`, transformOrigin: "left" }} /></span>}</span>
             <span className="em-row__rev"><b>{campaign.status === "sent" ? currency(campaign.revenue) : "—"}</b></span>
           </button>
-        </li>) : <li className="em-row-empty"><div className="empty"><Icon name="mail" /><b>{query ? "No campaigns match" : "Nothing here yet"}</b><span>{query ? "Try another name, subject or audience." : "Campaigns with this status will show here."}</span></div></li>}
+        </li>}) : <li className="em-row-empty"><div className="empty"><Icon name="mail" /><b>{query ? "No campaigns match" : "Nothing here yet"}</b><span>{query ? "Try another name, subject or audience." : "Campaigns with this status will show here."}</span></div></li>}
       </ul>
     </section>
 
