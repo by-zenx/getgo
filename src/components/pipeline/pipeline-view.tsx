@@ -13,12 +13,13 @@ const FIXTURE_NOW = Date.UTC(2026,9,26,12);
 const STAGES = ["New lead", "Contacted", "Qualified", "Proposal", "Negotiation", "Closing"] as const;
 type Stage = typeof STAGES[number];
 type CloseState = "won" | "lost" | null;
-type Deal = { id: string; name: string; company: string; owner: string; source: string; score: number; subScores: LeadSubScores; value: number; expectedClose: string; stage: Stage; closedAs: CloseState; closedAt: number | null; previousStage: Stage | null; handoffId?: string };
+type Deal = { id: string; name: string; company: string; owner: string; team?: string[]; source: string; score: number; subScores: LeadSubScores; value: number; expectedClose: string; stage: Stage; closedAs: CloseState; closedAt: number | null; previousStage: Stage | null; handoffId?: string };
 type Handoff = { id: string; name: string; company: string; source: string; score: number; owner: string };
 type Drag = { id: string; pointerId: number; x: number; y: number; originX: number; originY: number; tilt: number; offsetX: number; offsetY: number; width: number; height: number; stage: Stage | null; target: string | null; beforeId?: string };
 type PendingPointer = { id: string; pointerId: number; startX: number; startY: number; offsetX: number; offsetY: number; width: number; height: number };
 
 const stageProbability: Record<Stage, number> = { "New lead": .1, Contacted: .2, Qualified: .4, Proposal: .6, Negotiation: .75, Closing: .9 };
+const STAGE_TONES: Record<Stage,string> = { "New lead":"var(--primary)", Contacted:"var(--c2)", Qualified:"var(--warn)", Proposal:"var(--sea)", Negotiation:"var(--down)", Closing:"var(--text)" };
 const seed: Deal[] = [
   { id:"d1",name:"Ravi Kapoor",company:"The Linen Room",owner:"Mara Reyes",source:"Referral",score:71,subScores:{fit:72,intent:70,engagement:70},value:12400,expectedClose:"2026-11-18",stage:"Contacted",closedAs:null,closedAt:null,previousStage:null },
   { id:"d2",name:"Elena Marsh",company:"Juniper Labs",owner:"Jonah Okafor",source:"Website",score:82,subScores:{fit:84,intent:80,engagement:82},value:24800,expectedClose:"2026-11-26",stage:"Qualified",closedAs:null,closedAt:null,previousStage:null },
@@ -57,6 +58,7 @@ function enrichHandoffs(board: Deal[], handoffs: Handoff[], threads: MessageThre
 function initials(name: string) { return name.split(/\s+/).map((part) => part[0]).slice(0,2).join("").toUpperCase(); }
 function money(value: number) { return new Intl.NumberFormat("en-US", { style:"currency",currency:"USD",maximumFractionDigits:0 }).format(value); }
 function compactMoney(value: number) { return new Intl.NumberFormat("en-US", { style:"currency",currency:"USD",notation:"compact",maximumFractionDigits:1 }).format(value); }
+function dealTeam(deal: Deal) { return [...new Set([deal.owner,...(Array.isArray(deal.team)?deal.team:[])])]; }
 
 export function PipelineView() {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -252,7 +254,7 @@ export function PipelineView() {
     return()=>{window.removeEventListener("pointermove",onMove);window.removeEventListener("pointerup",onUp);window.removeEventListener("pointercancel",onCancel);window.removeEventListener("keydown",onKeyDown);};
   },[closeDeals,moveDeal]);
 
-  const members=useMemo(()=>[...WORKSPACE_MEMBERS.map((member)=>({name:member.name,initials:member.initials,hue:member.hue})),...Array.from(new Set(deals.map((deal)=>deal.owner))).filter((name)=>!WORKSPACE_MEMBERS.some((member)=>member.name===name)).map((name)=>({name,initials:initials(name),hue:210}))],[deals]);
+  const members=useMemo(()=>[...WORKSPACE_MEMBERS.map((member)=>({name:member.name,initials:member.initials,hue:member.hue})),...Array.from(new Set(deals.flatMap((deal)=>[deal.owner,...(Array.isArray(deal.team)?deal.team:[])]))).filter((name)=>!WORKSPACE_MEMBERS.some((member)=>member.name===name)).map((name)=>({name,initials:initials(name),hue:210}))],[deals]);
   const visibleDeals=useMemo(()=>deals.filter((deal)=>!deal.closedAs&&(!filter||deal.owner===filter)),[deals,filter]);
   const won=deals.filter((deal)=>deal.closedAs==="won"&&(!filter||deal.owner===filter));
   const lost=deals.filter((deal)=>deal.closedAs==="lost"&&(!filter||deal.owner===filter));
@@ -264,14 +266,15 @@ export function PipelineView() {
   const closeListDeals=closeList==="won"?won:lost;
   const closeLabel=closeList==="won"?"Won deals":"Lost deals";
   const pendingDeal=dragPreview?deals.find((deal)=>deal.id===dragPreview.id):null;
-  const pendingMember=pendingDeal?members.find((member)=>member.name===pendingDeal.owner):null;
+  const pendingTeam=pendingDeal?dealTeam(pendingDeal).map((name)=>({name,member:members.find((item)=>item.name===name)})):[];
   const dismissOverlay=()=>{setCloseList(null);setDetailId(null);setInsightsOpen(false);};
   const closeDeal=(deal:Deal,state:"won"|"lost")=>persist((current)=>current.map((item)=>item.id===deal.id?{...item,previousStage:item.stage,closedAs:state,closedAt:Date.now()}:item));
   const reopen=(deal:Deal)=>{persist((current)=>current.map((item)=>item.id===deal.id?{...item,stage:item.previousStage??"Contacted",previousStage:null,closedAs:null,closedAt:null}:item));setCloseList(null);};
   const openAdd=(stage:Stage)=>{addDialogRef.current?.querySelector("form")?.reset();setNewDealStage(stage);};
-  const addDeal=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();const form=event.currentTarget;const data=new FormData(form);const name=String(data.get("name")??"").trim();if(!name)return;const owner=String(data.get("owner")??WORKSPACE_MEMBERS[0].name);const stage=String(data.get("stage")??newDealStage??"New lead") as Stage;const value=Number(data.get("value"))||0;const due=new Date();due.setDate(due.getDate()+30);const date=String(data.get("expectedClose")||`${due.getFullYear()}-${String(due.getMonth()+1).padStart(2,"0")}-${String(due.getDate()).padStart(2,"0")}`);const deal:Deal={id:`deal-${Date.now().toString(36)}`,name,company:String(data.get("company")??"").trim(),owner,source:String(data.get("source")??"Website"),score:50,subScores:{fit:50,intent:50,engagement:50},value,expectedClose:date,stage,closedAs:null,closedAt:null,previousStage:null};persist((current)=>[...current,deal]);form.reset();setNewDealStage(null);setNotice(`${name} added to ${stage}`);window.setTimeout(()=>setNotice(""),2400);};
+  const addDeal=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();const form=event.currentTarget;const data=new FormData(form);const name=String(data.get("name")??"").trim();if(!name)return;const owner=String(data.get("owner")??WORKSPACE_MEMBERS[0].name);const stage=String(data.get("stage")??newDealStage??"New lead") as Stage;const value=Number(data.get("value"))||0;const due=new Date();due.setDate(due.getDate()+30);const date=String(data.get("expectedClose")||`${due.getFullYear()}-${String(due.getMonth()+1).padStart(2,"0")}-${String(due.getDate()).padStart(2,"0")}`);const deal:Deal={id:`deal-${Date.now().toString(36)}`,name,company:String(data.get("company")??"").trim(),owner,team:[],source:String(data.get("source")??"Website"),score:50,subScores:{fit:50,intent:50,engagement:50},value,expectedClose:date,stage,closedAs:null,closedAt:null,previousStage:null};persist((current)=>[...current,deal]);form.reset();setNewDealStage(null);setNotice(`${name} added to ${stage}`);window.setTimeout(()=>setNotice(""),2400);};
   const probabilities:Record<Stage,number>={"New lead":.1,Contacted:.2,Qualified:.4,Proposal:.6,Negotiation:.75,Closing:.9};
   const updateDeal=(id:string,update:Partial<Deal>)=>persist((current)=>current.map((deal)=>deal.id===id?{...deal,...update}:deal));
+  const toggleDealTeam=(deal:Deal,name:string)=>{const team=dealTeam(deal).filter((member)=>member!==deal.owner);updateDeal(deal.id,{team:team.includes(name)?team.filter((member)=>member!==name):[...team,name]});};
 
   return <div ref={rootRef} className={`ws pl pipeline-root${dragPreview?" is-dragging":""}`} data-view="pipeline">
     <section className="card ws-head pl-head" aria-label="Pipeline controls">
@@ -281,11 +284,10 @@ export function PipelineView() {
     <div className="pl-board-wrap">
     <div className="ws-scroll pl-scroll" role="region" aria-label="Pipeline stages" tabIndex={-1}>
       <div className="pl-board">
-        {STAGES.map((stage, index) => {
+        {STAGES.map((stage) => {
           const cards = visibleDeals.filter((deal) => deal.stage === stage);
           const stageValue = cards.reduce((sum, deal) => sum + deal.value, 0);
-          const stageTones = ['var(--primary)', 'var(--c2)', 'var(--warn)', 'var(--sea)', 'var(--down)', 'var(--text)'];
-          return <section className="ws-col pl-col" data-stage={stage} data-drag-over={dragPreview?.stage === stage} key={stage} aria-label={`${stage} deals`} style={{ '--pl-stage-tone': stageTones[index] } as CSSProperties}>
+          return <section className="ws-col pl-col" data-stage={stage} data-drag-over={dragPreview?.stage === stage} key={stage} aria-label={`${stage} deals`} style={{ '--pl-stage-tone': STAGE_TONES[stage] } as CSSProperties}>
             <header className="ws-col__head">
               <span className="ws-col__dot pl-stage-dot" aria-hidden="true" />
               <h2 className="ws-col__name">{stage}</h2>
@@ -295,8 +297,8 @@ export function PipelineView() {
             </header>
             <ol className="ws-list pl-list" aria-label={`${stage} cards`}>
               {cards.filter((deal) => deal.id !== dragPreview?.id).map((deal, cardIndex, stageCards) => {
-                const member = members.find((item) => item.name === deal.owner);
                 const closeDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(`${deal.expectedClose}T12:00:00`));
+                const assignees = dealTeam(deal);
                 return <Fragment key={deal.id}>
                   {dragPreview?.stage === stage && dragPreview.beforeId === deal.id && <li className="ws-ph pl-ph" aria-hidden="true" style={{ '--ws-ph-height': `${dragPreview.height}px` } as CSSProperties} />}
                   <li className="ws-card pl-card" data-id={deal.id} onPointerDown={(event) => {
@@ -327,15 +329,14 @@ export function PipelineView() {
                         </> : <>
                           <p className="ws-menu__head">Move to…</p>
                           <button type="button" role="menuitem" onClick={() => setMoveMenuOpen(false)}><Icon name="arrow-right" className="ws-flip" />Back</button>
-                          {STAGES.filter((target) => target !== stage).map((target) => <button key={target} type="button" role="menuitem" onClick={() => { moveDeal(deal.id, target); setOpenMenuId(null); setMoveMenuOpen(false); }}><span className="ws-col__dot" style={{ background: stageTones[STAGES.indexOf(target)] }} aria-hidden="true" />{target}</button>)}
+                          {STAGES.filter((target) => target !== stage).map((target) => <button key={target} type="button" role="menuitem" onClick={() => { moveDeal(deal.id, target); setOpenMenuId(null); setMoveMenuOpen(false); }}><span className="ws-col__dot" style={{ background: STAGE_TONES[target] }} aria-hidden="true" />{target}</button>)}
                         </>}
                       </div>}
                     </div>
-                    <h3 className="ws-card__title">{deal.name}</h3>
-                    <p className="pl-card__description">{deal.company || 'No company'}</p>
+                    <div className="pl-card__copy"><h3 className="ws-card__title">{deal.name}</h3><p className="pl-card__description">{deal.company || 'No company'}</p></div>
                     <div className="pl-card__bottom">
                       <b className="pl-card__amount">{money(deal.value)}</b>
-                      <span className="pl-card__assignee" title={deal.owner}><span className="av av--sm" style={{ '--h': member?.hue ?? 210 } as CSSProperties}>{initials(deal.owner)}</span><span className="sr-only">Assigned to {deal.owner}</span></span>
+                      <span className="pl-card__assignees" aria-label={`Assigned to ${assignees.join(', ')}`}>{assignees.slice(0,3).map((name) => {const assigned=members.find((item)=>item.name===name);return <span className="av av--sm" title={name} key={name} style={{ '--h': assigned?.hue ?? 210 } as CSSProperties}>{initials(name)}</span>})}{assignees.length>3&&<span className="pl-team-more" title={assignees.slice(3).join(', ')}>+{assignees.length-3}</span>}</span>
                     </div>
                   </li>
                   {dragPreview?.stage === stage && !dragPreview.beforeId && cardIndex === stageCards.length - 1 && <li className="ws-ph pl-ph" aria-hidden="true" style={{ '--ws-ph-height': `${dragPreview.height}px` } as CSSProperties} />}
@@ -349,7 +350,7 @@ export function PipelineView() {
       <span className="sr-only" aria-live="polite">{visibleDeals.length} open deals</span>
     </div>
     </div>
-{dragPreview&&pendingDeal&&<div ref={ghostRef} className="ws-drag-preview pl-drag-preview" aria-hidden="true" style={{left:dragPreview.originX,top:dragPreview.originY,width:dragPreview.width,height:dragPreview.height}}><span className="pl-card__date">Closes {new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric"}).format(new Date(`${pendingDeal.expectedClose}T12:00:00`))}</span><b>{pendingDeal.name}</b><small>{pendingDeal.company||"No company"}</small><span className="pl-drag-preview__foot"><strong>{money(pendingDeal.value)}</strong><span className="av av--sm" style={{"--h":pendingMember?.hue??210} as CSSProperties}>{initials(pendingDeal.owner)}</span></span></div>}
+{dragPreview&&pendingDeal&&<div ref={ghostRef} className="ws-drag-preview pl-drag-preview" aria-hidden="true" style={{left:dragPreview.originX,top:dragPreview.originY,width:dragPreview.width,height:dragPreview.height}}><span className="pl-card__date">Closes {new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric"}).format(new Date(`${pendingDeal.expectedClose}T12:00:00`))}</span><div className="pl-drag-preview__copy"><b>{pendingDeal.name}</b><small>{pendingDeal.company||"No company"}</small></div><span className="pl-drag-preview__foot"><strong>{money(pendingDeal.value)}</strong><span className="pl-detail-preview__team">{pendingTeam.slice(0,3).map(({name,member})=><span className="av av--sm" title={name} key={name} style={{"--h":member?.hue??210} as CSSProperties}>{initials(name)}</span>)}{pendingTeam.length>3&&<span className="pl-team-more">+{pendingTeam.length-3}</span>}</span></span></div>}
     {dropPanelVisible&&<div ref={dropPanelRef} className="pl-drop-panel" data-active={Boolean(dragPreview)} aria-hidden={!dragPreview}><button className={`pl-drop-tile pl-drop-tile--won${dragPreview?.target==="won"?" is-drop-target":""}`} type="button" data-closeout="won" disabled={!dragPreview}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z"/></svg><b>Won</b><span>Drop to mark as won</span>{dragPreview?.target==="won"&&<small>{thisMonth.length} this month Â· {money(wonValue)}</small>}</button><button className={`pl-drop-tile pl-drop-tile--lost${dragPreview?.target==="lost"?" is-drop-target":""}`} type="button" data-closeout="lost" disabled={!dragPreview}><Icon name="x"/><b>Lost</b><span>Drop to mark as lost</span>{dragPreview?.target==="lost"&&<small>{lost.length} closed lost Â· {money(lost.reduce((sum,deal)=>sum+deal.value,0))}</small>}</button></div>}
     {notice&&<div className="toasts" aria-live="polite"><div className="toast" role="status"><span className="toast__ico"><Icon name="check"/></span><span>{notice}</span></div></div>}
     <dialog ref={addDialogRef} className="modal" aria-label="Add deal" onCancel={()=>setNewDealStage(null)} onClick={(event)=>{if(event.target===addDialogRef.current)setNewDealStage(null);}}>
@@ -372,9 +373,32 @@ export function PipelineView() {
         <div className="sheet__body">
           {insightsOpen&&<div className="pl-insights"><article className="card pl-insight"><span className="stat__label">Open value</span><b className="stat__val">{money(openValue)}</b></article><article className="card pl-insight"><span className="stat__label">Weighted value</span><b className="stat__val">{money(weighted)}</b></article><article className="card pl-insight"><span className="stat__label">Won this month</span><b className="stat__val">{money(wonValue)}</b></article><article className="card pl-insight"><span className="stat__label">Waiting to be qualified</span><b className="stat__val">{visibleDeals.filter((deal)=>deal.stage==="New lead").length}</b></article><section className="card pl-insight"><div className="card__head"><h3 className="card__title">Weighted forecast by stage</h3></div><ul className="pl-probabilities">{STAGES.map((stage)=><li key={stage}><span>{stage}</span><b>{Math.round(probabilities[stage]*100)}%</b><small>{money(visibleDeals.filter((deal)=>deal.stage===stage).reduce((sum,deal)=>sum+deal.value*probabilities[stage],0))}</small></li>)}</ul></section></div>}
           {closeList&&<ul className="pl-closed-list">{closeListDeals.map((deal)=><li key={deal.id}><span><b>{deal.name}</b><small>{deal.company} Â· {money(deal.value)}</small></span><button className="btn btn--sm" type="button" onClick={()=>reopen(deal)}>Reopen</button></li>)}{!closeListDeals.length&&<li className="card__sub">No closed deals yet.</li>}</ul>}
-          {selected&&<div className="ws-sh pl-detail"><div className="field"><label className="label" htmlFor="pl-detail-name">Deal name</label><input className="input" id="pl-detail-name" value={selected.name} maxLength={90} onChange={(event)=>updateDeal(selected.id,{name:event.target.value})}/></div><div className="field"><label className="label" htmlFor="pl-detail-company">Company</label><input className="input" id="pl-detail-company" value={selected.company} maxLength={90} onChange={(event)=>updateDeal(selected.id,{company:event.target.value})}/></div><div className="ws-sc__grid"><div className="field"><label className="label" htmlFor="pl-detail-stage">Stage</label><select className="select" id="pl-detail-stage" value={selected.stage} onChange={(event)=>updateDeal(selected.id,{stage:event.target.value as Stage})}>{STAGES.map((stage)=><option key={stage}>{stage}</option>)}</select></div><div className="field"><label className="label" htmlFor="pl-detail-owner">Owner</label><select className="select" id="pl-detail-owner" value={selected.owner} onChange={(event)=>updateDeal(selected.id,{owner:event.target.value})}>{members.map((member)=><option key={member.name}>{member.name}</option>)}</select></div><div className="field"><label className="label" htmlFor="pl-detail-source">Source</label><select className="select" id="pl-detail-source" value={selected.source} onChange={(event)=>updateDeal(selected.id,{source:event.target.value})}>{["Website","Email","Instagram","Referral","Partner","Phone"].map((source)=><option key={source}>{source}</option>)}</select></div><div className="field"><label className="label" htmlFor="pl-detail-value">Deal value</label><input className="input" id="pl-detail-value" type="number" min="0" value={selected.value} onChange={(event)=>updateDeal(selected.id,{value:Number(event.target.value)||0})}/></div><div className="field"><label className="label" htmlFor="pl-detail-date">Expected close</label><input className="input" id="pl-detail-date" type="date" value={selected.expectedClose} onChange={(event)=>updateDeal(selected.id,{expectedClose:event.target.value})}/></div></div><p className="card__sub">Lead score: <span className={`pill pill--${leadScoreTone(scoreFor(selected),settings)}`}>{scoreFor(selected)} Â· {leadScoreLabel(scoreFor(selected),settings)}</span></p></div>}
+          {selected && <div className="ws-sh pl-detail" style={{ '--pl-stage-tone': STAGE_TONES[selected.stage] } as CSSProperties}>
+            <article className="pl-detail-preview">
+              <div className="pl-detail-preview__top"><span>Closes {new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(`${selected.expectedClose}T12:00:00`))}</span><span className="pl-detail-preview__stage"><i />{selected.stage}</span></div>
+              <h3>{selected.name}</h3>
+              <p>{selected.company || 'No company'}</p>
+              <div className="pl-detail-preview__bottom"><b>{money(selected.value)}</b><span className="pl-detail-preview__team">{dealTeam(selected).map((name) => {const member=members.find((item)=>item.name===name);return <span className="av av--sm" title={name} key={name} style={{'--h':member?.hue??210} as CSSProperties}>{initials(name)}</span>})}</span></div>
+            </article>
+            <div className="pl-detail-steps" role="group" aria-label="Deal stage">
+              {STAGES.map((stage, index) => <button className={`pl-detail-step${selected.stage === stage ? ' is-current' : ''}`} type="button" key={stage} aria-current={selected.stage === stage ? 'step' : undefined} onClick={() => { if(selected.stage !== stage) moveDeal(selected.id, stage); }}>
+                <span className="pl-detail-step__track"><i style={{ transform: `scaleX(${index <= STAGES.indexOf(selected.stage) ? 1 : 0})` }} /></span><span className="pl-detail-step__label">{stage}</span>
+              </button>)}
+            </div>
+            <div className="pl-detail-fields">
+              <div className="field"><label className="label" htmlFor="pl-detail-name">Deal name</label><input className="input" id="pl-detail-name" value={selected.name} maxLength={90} onChange={(event) => updateDeal(selected.id, { name: event.target.value })} /></div>
+              <div className="field"><label className="label" htmlFor="pl-detail-company">Company</label><input className="input" id="pl-detail-company" value={selected.company} maxLength={90} onChange={(event) => updateDeal(selected.id, { company: event.target.value })} /></div>
+              <div className="field"><label className="label" htmlFor="pl-detail-value">Amount (USD)</label><input className="input" id="pl-detail-value" type="number" min="0" value={selected.value} onChange={(event) => updateDeal(selected.id, { value: Number(event.target.value) || 0 })} /></div>
+              <div className="field"><label className="label" htmlFor="pl-detail-date">Expected close</label><input className="input" id="pl-detail-date" type="date" value={selected.expectedClose} onChange={(event) => updateDeal(selected.id, { expectedClose: event.target.value })} /></div>
+              <div className="field"><label className="label" htmlFor="pl-detail-owner">Owner</label><select className="select" id="pl-detail-owner" value={selected.owner} onChange={(event) => updateDeal(selected.id, { owner: event.target.value, team: (selected.team ?? []).filter((name) => name !== event.target.value) })}>{members.map((member) => <option key={member.name}>{member.name}</option>)}</select></div>
+              <div className="field"><label className="label" htmlFor="pl-detail-source">Source</label><select className="select" id="pl-detail-source" value={selected.source} onChange={(event) => updateDeal(selected.id, { source: event.target.value })}>{['Website', 'Email', 'Instagram', 'Referral', 'Partner', 'Phone'].map((source) => <option key={source}>{source}</option>)}</select></div>
+              <div className="field pl-detail-score"><span className="label">Lead score</span><span className={`pill pill--${leadScoreTone(scoreFor(selected), settings)}`}>{scoreFor(selected)} · {leadScoreLabel(scoreFor(selected), settings)}</span></div>
+            </div>
+            <div className="field"><span className="label">Team</span><div className="pl-team-picker" role="group" aria-label="Deal team">{members.map((member) => {const assigned=dealTeam(selected).includes(member.name);return <button className="pl-team-chip" type="button" key={member.name} aria-pressed={assigned} disabled={selected.owner===member.name} onClick={() => toggleDealTeam(selected, member.name)}><span className="av av--sm" style={{'--h':member.hue} as CSSProperties}>{member.initials}</span>{member.name}</button>})}</div></div>
+            <div className="pl-customer-card"><span className="av" style={{'--h':members.find((member)=>member.name===selected.owner)?.hue??210} as CSSProperties}>{initials(selected.name)}</span><span className="pl-customer-card__body"><small>Customer</small><b>{selected.company || 'No customer linked'}</b><small>{selected.name} · Primary contact</small></span><Icon name="arrow-right" /></div>
+          </div>}
         </div>
-        {selected&&<footer className="sheet__foot"><button className="btn btn--danger btn--ghost ws-sc__del" type="button" onClick={()=>closeDeal(selected,"lost")}>Mark lost</button><button className="btn btn--primary" type="button" onClick={()=>closeDeal(selected,"won")}>Mark won</button><button className="btn btn--dark" type="button" onClick={dismissOverlay}>Done</button></footer>}
+        {selected && <footer className="sheet__foot pl-detail-actions"><button className="btn btn--primary" type="button" onClick={() => { closeDeal(selected, 'won'); setDetailId(null); setNotice(`${selected.name} marked won`); window.setTimeout(() => setNotice(''), 2400); }}><svg className="ico pl-menu-trophy" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z" /></svg>Mark won</button><button className="btn btn--ghost" type="button" onClick={() => { closeDeal(selected, 'lost'); setDetailId(null); setNotice(`${selected.name} marked lost`); window.setTimeout(() => setNotice(''), 2400); }}><Icon name="x" />Mark lost</button><button className="btn btn--danger btn--ghost" type="button" onClick={() => { persist((current) => current.filter((deal) => deal.id !== selected.id)); setDetailId(null); setNotice(`${selected.name} deleted`); window.setTimeout(() => setNotice(''), 2400); }}><Icon name="trash" />Delete</button></footer>}
       </div>
     </dialog>
   </div>;
