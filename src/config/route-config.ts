@@ -12,6 +12,7 @@ export const MAIN_TABS: TabItem[] = [
   { href: "/catalog", label: "Catalog", route: "catalog" },
   { href: "/customers", label: "Customers", route: "customers", groupedRoutes: ["feedback"] },
   { href: "/leads", label: "Leads", route: "leads", count: 2, groupedRoutes: ["email", "scoring"] },
+  { href: "/pipeline", label: "Pipeline", route: "pipeline" },
   { href: "/analytics", label: "Analytics", route: "analytics" },
   { href: "/automations", label: "Automations", route: "automations", groupedRoutes: ["integrations"] },
 ];

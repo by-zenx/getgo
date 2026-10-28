@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Icon } from "@/components/icons/svg-sprite";
 import { calculateLeadScore, createInitialMessageThreads, DEFAULT_LEAD_SCORING, leadOwner, leadScoreLabel, leadScoreTone, leadScoreWhy, LEAD_SCORING_STORAGE_KEY, MESSAGE_CONTACTS, SEEDED_EMAIL_LEADS, threadSubScores, type LeadScoringSettings, type LeadSubScores, type MessageThread } from "@/data/messages-data";
 import "@/styles/lead-scoring-config.css";
@@ -204,7 +205,7 @@ export function ScoringView() {
             <td>{lead.why}</td>
             <td>{lead.owner}</td>
             <td><span className={`pill pill--${inPipeline ? "mint" : "gray"}`}>{inPipeline ? "In pipeline" : "New"}</span></td>
-            <td><button className="btn btn--sm" type="button" disabled={inPipeline} onClick={() => addToPipeline(lead)}>{inPipeline ? "View in pipeline" : "Add to pipeline"}</button></td>
+            <td>{inPipeline ? <Link className="btn btn--sm" href="/pipeline">View in pipeline</Link> : <button className="btn btn--sm" type="button" onClick={() => addToPipeline(lead)}>Add to pipeline</button>}</td>
           </tr>;
         })}</tbody>
       </table></div>

@@ -61,7 +61,7 @@ export function Dock({ onOpenFinder, workspaceCount = 11 }: DockProps) {
   };
 
   return (
-    <nav className="dock" aria-label="Workspace and tools">
+    <nav className="dock" aria-label="Projects and tools">
       <button
         className="dock__btn"
         type="button"
@@ -82,7 +82,7 @@ export function Dock({ onOpenFinder, workspaceCount = 11 }: DockProps) {
         className="dock__btn"
         href="/workspace"
         data-route="workspace"
-        aria-label="Workspace"
+        aria-label="Projects"
         aria-current={isCurrent("workspace") ? "page" : undefined}
       >
         <Icon name="board" />
@@ -91,7 +91,7 @@ export function Dock({ onOpenFinder, workspaceCount = 11 }: DockProps) {
             {boardCount}
           </span>
         )}
-        <span className="dock__tip">Workspace</span>
+        <span className="dock__tip">Projects</span>
       </Link>
 
       <Link
