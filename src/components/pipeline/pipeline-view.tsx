@@ -14,6 +14,8 @@ const FIXTURE_NOW = PIPELINE_TODAY;
 const STAGES = PIPELINE_STAGES;
 type Stage = typeof STAGES[number];
 type CloseState = "won" | "lost" | null;
+type ViewMode = "board" | "list";
+type DealSort = "name" | "company" | "stage" | "value" | "close" | "owner";
 type Deal = { id: string; name: string; company: string; owner: string; team?: string[]; source: string; score: number; subScores: LeadSubScores; value: number; expectedClose: string; stage: Stage; closedAs: CloseState; closedAt: number | null; previousStage: Stage | null; createdAt?: string; stageHistory?: PipelineStageHistory; lostReason?: string; handoffId?: string };
 type Handoff = { id: string; name: string; company: string; source: string; score: number; owner: string };
 type Drag = { id: string; pointerId: number; x: number; y: number; originX: number; originY: number; tilt: number; offsetX: number; offsetY: number; width: number; height: number; stage: Stage | null; target: string | null; beforeId?: string };
@@ -91,6 +93,10 @@ export function PipelineView() {
   const [moveMenuOpen,setMoveMenuOpen] = useState(false);
   const [filter,setFilter] = useState<string | null>(null);
   const [searchQuery,setSearchQuery] = useState("");
+  const [viewMode,setViewMode] = useState<ViewMode>("board");
+  const [includeClosed,setIncludeClosed] = useState(false);
+  const [sortBy,setSortBy] = useState<DealSort>("close");
+  const [sortDirection,setSortDirection] = useState<1|-1>(1);
   const [settings,setSettings] = useState<LeadScoringSettings>(DEFAULT_LEAD_SCORING);
   const [closeList,setCloseList] = useState<CloseState>(null);
   const [detailId,setDetailId] = useState<string | null>(null);
@@ -115,6 +121,15 @@ export function PipelineView() {
     const refresh=() => { const latest=validSettings(); setSettings(latest); setDeals((current) => { const next=enrichHandoffs(current,readHandoffs(),threads,latest); if(next!==current) { try { localStorage.setItem(BOARD_KEY,JSON.stringify(next)); } catch {} } return next; }); };
     window.addEventListener("storage",refresh); window.addEventListener("corbel:pipeline-leads-updated",refresh); window.addEventListener("corbel:lead-scoring-updated",refresh);
     return () => { window.removeEventListener("storage",refresh); window.removeEventListener("corbel:pipeline-leads-updated",refresh); window.removeEventListener("corbel:lead-scoring-updated",refresh); };
+  },[]);
+
+  useEffect(() => {
+    try {
+      const saved=localStorage.getItem("corbel:pipeline:view");
+      // Restore Rapport-style view preference after hydration to keep prerendered markup deterministic.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if(saved==="board"||saved==="list")setViewMode(saved);
+    } catch { /* retain the default board view */ }
   },[]);
 
   useEffect(() => {
@@ -279,7 +294,13 @@ export function PipelineView() {
   },[closeDeals,moveDeal]);
 
   const members=useMemo(()=>[...WORKSPACE_MEMBERS.map((member)=>({name:member.name,initials:member.initials,hue:member.hue})),...Array.from(new Set(deals.flatMap((deal)=>[deal.owner,...(Array.isArray(deal.team)?deal.team:[])]))).filter((name)=>!WORKSPACE_MEMBERS.some((member)=>member.name===name)).map((name)=>({name,initials:initials(name),hue:210}))],[deals]);
-  const visibleDeals=useMemo(()=>{const query=searchQuery.trim().toLocaleLowerCase();return deals.filter((deal)=>!deal.closedAs&&(!filter||deal.owner===filter)&&(!query||`${deal.name} ${deal.company} ${deal.source} ${deal.stage}`.toLocaleLowerCase().includes(query)));},[deals,filter,searchQuery]);
+  const matchingDeals=useMemo(()=>{const query=searchQuery.trim().toLocaleLowerCase();return deals.filter((deal)=>(!filter||deal.owner===filter)&&(!query||`${deal.name} ${deal.company} ${deal.source} ${deal.stage} ${deal.closedAs??""}`.toLocaleLowerCase().includes(query)));},[deals,filter,searchQuery]);
+  const visibleDeals=useMemo(()=>matchingDeals.filter((deal)=>!deal.closedAs),[matchingDeals]);
+  const listDeals=useMemo(()=>matchingDeals.filter((deal)=>includeClosed||!deal.closedAs).sort((a,b)=>{
+    const left=sortBy==="name"?a.name.toLocaleLowerCase():sortBy==="company"?a.company.toLocaleLowerCase():sortBy==="stage"?(a.closedAs??a.stage).toLocaleLowerCase():sortBy==="value"?a.value:sortBy==="owner"?a.owner.toLocaleLowerCase():(a.closedAt??Date.parse(`${a.expectedClose}T12:00:00Z`));
+    const right=sortBy==="name"?b.name.toLocaleLowerCase():sortBy==="company"?b.company.toLocaleLowerCase():sortBy==="stage"?(b.closedAs??b.stage).toLocaleLowerCase():sortBy==="value"?b.value:sortBy==="owner"?b.owner.toLocaleLowerCase():(b.closedAt??Date.parse(`${b.expectedClose}T12:00:00Z`));
+    return (left<right?-1:left>right?1:0)*sortDirection;
+  }),[matchingDeals,includeClosed,sortBy,sortDirection]);
   const won=deals.filter((deal)=>deal.closedAs==="won"&&(!filter||deal.owner===filter));
   const lost=deals.filter((deal)=>deal.closedAs==="lost"&&(!filter||deal.owner===filter));
   const thisMonth=won.filter((deal)=>deal.closedAt!==null&&new Date(deal.closedAt).getMonth()===new Date(now).getMonth()&&new Date(deal.closedAt).getFullYear()===new Date(now).getFullYear());
@@ -294,6 +315,16 @@ export function PipelineView() {
   const chooseLostReason=(reason:string)=>{if(pendingLostId)closeDeals(pendingLostId,"lost",reason);setPendingLostId(null);};
   const reopen=(deal:Deal)=>{persist((current)=>current.map((item)=>item.id===deal.id?{...item,stage:item.previousStage??"Contacted",previousStage:null,closedAs:null,closedAt:null,lostReason:undefined}:item));setCloseList(null);};
   const openAdd=(stage:Stage)=>{addDialogRef.current?.querySelector("form")?.reset();setNewDealStage(stage);};
+  const switchView=(mode:ViewMode)=>{if(mode===viewMode)return;setViewMode(mode);try{localStorage.setItem("corbel:pipeline:view",mode);}catch{ /* keep the current view for this session */ }if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches)window.requestAnimationFrame(()=>{const target=rootRef.current?.querySelector<HTMLElement>(mode==="board"?".pl-board-wrap":".pl-listcard");if(target)gsap.fromTo(target,{opacity:0,y:12},{opacity:1,y:0,duration:.32,ease:"power3.out",clearProps:"opacity,transform"});});};
+  const toggleSort=(key:DealSort)=>{if(sortBy===key)setSortDirection((direction)=>direction===1?-1:1);else{setSortBy(key);setSortDirection(key==="value"?-1:1);}};
+  const exportCsv=()=>{
+    const exportDeals=viewMode==="list"?listDeals:visibleDeals;
+    if(!exportDeals.length)return;
+    const rows:(string|number)[][]=[["Deal name","Company","Stage","Amount","Close date","Owner","Team","Source","Lead score"]];
+    exportDeals.forEach((deal)=>rows.push([deal.name,deal.company,deal.closedAs==="won"?"Won":deal.closedAs==="lost"?"Lost":deal.stage,deal.value,deal.closedAt?dateOnly(deal.closedAt):deal.expectedClose,deal.owner,dealTeam(deal).join("; "),deal.source,scoreFor(deal)]));
+    const csv=rows.map((row)=>row.map((value)=>`"${String(value).replaceAll('"','""')}"`).join(",")).join("\r\n");
+    const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));const anchor=document.createElement("a");anchor.href=url;anchor.download="corbel-pipeline-deals.csv";anchor.click();URL.revokeObjectURL(url);
+  };
   const addDeal=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();const form=event.currentTarget;const data=new FormData(form);const name=String(data.get("name")??"").trim();if(!name)return;const owner=String(data.get("owner")??WORKSPACE_MEMBERS[0].name);const stage=String(data.get("stage")??newDealStage??"New lead") as Stage;const value=Number(data.get("value"))||0;const due=new Date(FIXTURE_NOW);due.setDate(due.getDate()+30);const date=String(data.get("expectedClose")||`${due.getUTCFullYear()}-${String(due.getUTCMonth()+1).padStart(2,"0")}-${String(due.getUTCDate()).padStart(2,"0")}`);const today=dateOnly(FIXTURE_NOW);const deal:Deal={id:`deal-${Date.now().toString(36)}`,name,company:String(data.get("company")??"").trim(),owner,team:[],source:String(data.get("source")??"Website"),score:50,subScores:{fit:50,intent:50,engagement:50},value,expectedClose:date,stage,closedAs:null,closedAt:null,previousStage:null,createdAt:today,stageHistory:{[stage]:today}};persist((current)=>[...current,deal]);form.reset();setNewDealStage(null);setNotice(`${name} added to ${stage}`);window.setTimeout(()=>setNotice(""),2400);};
   const updateDeal=(id:string,update:Partial<Deal>)=>persist((current)=>current.map((deal)=>deal.id===id?{...deal,...update}:deal));
   const toggleDealTeam=(deal:Deal,name:string)=>{const team=dealTeam(deal).filter((member)=>member!==deal.owner);updateDeal(deal.id,{team:team.includes(name)?team.filter((member)=>member!==name):[...team,name]});};
@@ -304,9 +335,9 @@ export function PipelineView() {
         <label className="pl-search"><Icon name="search"/><input className="input" aria-label="Search deals" placeholder="Search deals..." value={searchQuery} onChange={(event)=>setSearchQuery(event.target.value)}/><button className="pl-search__clear" type="button" aria-label="Clear search" hidden={!searchQuery} onClick={()=>setSearchQuery("")}><Icon name="x"/></button></label>
         <div className="ws-head__people pl-owner-filter" role="group" aria-label="Filter by owner"><div className="ws-people">{members.map((member)=><button key={member.name} className="ws-person" type="button" aria-pressed={filter===member.name} title={member.name} aria-label={`Show ${member.name}'s deals`} onClick={()=>setFilter((current)=>current===member.name?null:member.name)}><span className="av av--sm" style={{"--h":member.hue} as CSSProperties}>{member.initials}</span></button>)}</div><button className="link-btn ws-clear" type="button" hidden={!filter} onClick={()=>setFilter(null)}>Show all</button></div>
       </div>
-      <div className="pl-toolbar__end"><span className="pl-deal-count"><b>{visibleDeals.length}</b> deals</span><span className="pl-close-pills"><button className="pill pl-close-pill pl-close-pill--won" type="button" aria-label={`View ${thisMonth.length} deals won this month, totaling ${money(wonValue)}`} title="Won deals" onClick={()=>setCloseList("won")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z"/></svg><span>Won</span></button><button className="pill pl-close-pill pl-close-pill--lost" type="button" aria-label={`View ${lost.length} lost deals`} title="Lost deals" onClick={()=>setCloseList("lost")}><Icon name="x"/><span>Lost</span></button></span><button className="btn btn--primary ws-head__add" type="button" onClick={()=>openAdd("New lead")}><Icon name="plus"/>New deal</button></div>
+      <div className="pl-toolbar__end"><span className="pl-deal-count"><b>{visibleDeals.length}</b> deals</span><span className="pl-close-pills"><button className="pill pl-close-pill pl-close-pill--won" type="button" aria-label={`View ${thisMonth.length} deals won this month, totaling ${money(wonValue)}`} title="Won deals" onClick={()=>setCloseList("won")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z"/></svg><span>Won</span></button><button className="pill pl-close-pill pl-close-pill--lost" type="button" aria-label={`View ${lost.length} lost deals`} title="Lost deals" onClick={()=>setCloseList("lost")}><Icon name="x"/><span>Lost</span></button></span><div className="pl-view-toggle" role="group" aria-label="Pipeline view"><button type="button" aria-label="Kanban view" title="Kanban view" aria-pressed={viewMode==="board"} onClick={()=>switchView("board")}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="5" height="16" rx="1.3"/><rect x="9.5" y="4" width="5" height="11" rx="1.3"/><rect x="15.5" y="4" width="5" height="14" rx="1.3"/></svg></button><button type="button" aria-label="List view" title="List view" aria-pressed={viewMode==="list"} onClick={()=>switchView("list")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".7"/><circle cx="4.5" cy="12" r=".7"/><circle cx="4.5" cy="18" r=".7"/></svg></button></div><button className="pl-export" type="button" aria-label="Export deals as CSV" title="Export deals as CSV" onClick={exportCsv}><Icon name="download"/></button><button className="btn btn--primary ws-head__add" type="button" onClick={()=>openAdd("New lead")}><Icon name="plus"/>New deal</button></div>
     </section>
-    <div className="pl-board-wrap">
+    <div className="pl-board-wrap" hidden={viewMode!=="board"}>
     <div className="ws-scroll pl-scroll" role="region" aria-label="Pipeline stages" tabIndex={-1}>
       <div className="pl-board">
         {STAGES.map((stage) => {
@@ -375,6 +406,15 @@ export function PipelineView() {
       <span className="sr-only" aria-live="polite">{visibleDeals.length} open deals</span>
     </div>
     </div>
+    <section className="card pl-listcard" hidden={viewMode!=="list"} aria-labelledby="pl-list-title">
+      <header className="card__head"><h2 className="card__title" id="pl-list-title">Deals <span className="pl-list-count">{listDeals.length}</span></h2><div className="card__tools"><button className="chip" type="button" aria-pressed={includeClosed} onClick={()=>setIncludeClosed((current)=>!current)}>Include won &amp; lost</button></div></header>
+      {listDeals.length>0?<div className="table-wrap pl-list-table-wrap"><table className="table pl-list-table"><thead><tr>{([["name","Deal"],["company","Company"],["stage","Stage"],["value","Amount"],["close","Close date"],["owner","Owner"],["source","Source"]] as [DealSort|"source",string][]).map(([key,label])=><th key={key} scope="col" aria-sort={sortBy===key?(sortDirection===1?"ascending":"descending"):undefined}><button type="button" onClick={(event)=>{event.stopPropagation();if(key!=="source")toggleSort(key);}}>{label}{key!=="source"&&<svg className={`pl-sort${sortBy===key?" is-active":""}`} viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>}</button></th>)}</tr></thead><tbody>{listDeals.map((deal)=>{
+        const ownerMember=members.find((member)=>member.name===deal.owner);const closeDate=new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric",year:"numeric"}).format(new Date(deal.closedAt??Date.parse(`${deal.expectedClose}T12:00:00Z`)));
+        return <tr key={deal.id} tabIndex={0} onClick={()=>setDetailId(deal.id)} onKeyDown={(event)=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();setDetailId(deal.id);}}}>
+          <td><b className="pl-list-name">{deal.name}</b></td><td>{deal.company||"—"}</td><td><span className={`pl-list-stage${deal.closedAs?` is-${deal.closedAs}`:""}`}><i/>{deal.closedAs==="won"?"Won":deal.closedAs==="lost"?"Lost":deal.stage}</span></td><td className="num">{money(deal.value)}</td><td>{closeDate}</td><td><span className="pl-list-owner"><span className="av av--sm" style={{"--h":ownerMember?.hue??210} as CSSProperties}>{ownerMember?.initials??initials(deal.owner)}</span>{deal.owner}</span></td><td>{deal.source}</td>
+        </tr>;
+      })}</tbody></table></div>:<div className="empty pl-list-empty"><Icon name="search"/><b>No deals match</b><span>Clear the search or include won and lost deals.</span></div>}
+    </section>
 {dragPreview&&pendingDeal&&<div ref={ghostRef} className="ws-drag-preview pl-drag-preview" aria-hidden="true" style={{left:dragPreview.originX,top:dragPreview.originY,width:dragPreview.width,height:dragPreview.height}}><span className="pl-card__date">Closes {new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric"}).format(new Date(`${pendingDeal.expectedClose}T12:00:00`))}</span><div className="pl-drag-preview__copy"><b>{pendingDeal.name}</b><small>{pendingDeal.company||"No company"}</small></div><span className="pl-drag-preview__foot"><strong>{money(pendingDeal.value)}</strong><span className="pl-detail-preview__team">{pendingTeam.slice(0,3).map(({name,member})=><span className="av av--sm" title={name} key={name} style={{"--h":member?.hue??210} as CSSProperties}>{initials(name)}</span>)}{pendingTeam.length>3&&<span className="pl-team-more">+{pendingTeam.length-3}</span>}</span></span></div>}
     {dropPanelVisible&&<div ref={dropPanelRef} className="pl-drop-panel" data-active={Boolean(dragPreview)} aria-hidden={!dragPreview}><button className={`pl-drop-tile pl-drop-tile--won${dragPreview?.target==="won"?" is-drop-target":""}`} type="button" data-closeout="won" disabled={!dragPreview}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z"/></svg><b>Won</b><span>Drop to mark as won</span>{dragPreview?.target==="won"&&<small>{thisMonth.length} this month Â· {money(wonValue)}</small>}</button><button className={`pl-drop-tile pl-drop-tile--lost${dragPreview?.target==="lost"?" is-drop-target":""}`} type="button" data-closeout="lost" disabled={!dragPreview}><Icon name="x"/><b>Lost</b><span>Drop to mark as lost</span>{dragPreview?.target==="lost"&&<small>{lost.length} closed lost Â· {money(lost.reduce((sum,deal)=>sum+deal.value,0))}</small>}</button></div>}
     {notice&&<div className="toasts" aria-live="polite"><div className="toast" role="status"><span className="toast__ico"><Icon name="check"/></span><span>{notice}</span></div></div>}
