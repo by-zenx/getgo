@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import gsap from "gsap";
@@ -56,13 +56,14 @@ function enrichHandoffs(board: Deal[], handoffs: Handoff[], threads: MessageThre
 }
 function initials(name: string) { return name.split(/\s+/).map((part) => part[0]).slice(0,2).join("").toUpperCase(); }
 function money(value: number) { return new Intl.NumberFormat("en-US", { style:"currency",currency:"USD",maximumFractionDigits:0 }).format(value); }
+function compactMoney(value: number) { return new Intl.NumberFormat("en-US", { style:"currency",currency:"USD",notation:"compact",maximumFractionDigits:1 }).format(value); }
 
 export function PipelineView() {
   const rootRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<HTMLDialogElement>(null);
   const addDialogRef = useRef<HTMLDialogElement>(null);
-  const dropBarRef = useRef<HTMLDivElement>(null);
-  const dropBarWasActiveRef = useRef(false);
+  const dropPanelRef = useRef<HTMLDivElement>(null);
+  const dropPanelWasActiveRef = useRef(false);
   const dragRef = useRef<Drag | null>(null);
   const pointerRef = useRef<PendingPointer | null>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
@@ -72,7 +73,9 @@ export function PipelineView() {
   const [deals,setDeals] = useState<Deal[]>(seed);
   const [now,setNow] = useState(FIXTURE_NOW);
   const [dragPreview,setDragPreview] = useState<Drag|null>(null);
-  const [dropBarVisible,setDropBarVisible] = useState(false);
+  const [dropPanelVisible,setDropPanelVisible] = useState(false);
+  const [openMenuId,setOpenMenuId] = useState<string|null>(null);
+  const [moveMenuOpen,setMoveMenuOpen] = useState(false);
   const [filter,setFilter] = useState<string | null>(null);
   const [settings,setSettings] = useState<LeadScoringSettings>(DEFAULT_LEAD_SCORING);
   const [closeList,setCloseList] = useState<CloseState>(null);
@@ -125,19 +128,48 @@ export function PipelineView() {
   },[newDealStage]);
 
   useEffect(() => {
-    const bar=dropBarRef.current;
+    if(!openMenuId)return;
+    const onPointerDown=(event:PointerEvent)=>{
+      const target=event.target;
+      if(target instanceof Element&&!target.closest(`.pl-card[data-id="${CSS.escape(openMenuId)}"]`)){
+        setOpenMenuId(null);setMoveMenuOpen(false);
+      }
+    };
+    const onKeyDown=(event:KeyboardEvent)=>{
+      if(event.key==="Escape"){setOpenMenuId(null);setMoveMenuOpen(false);}
+    };
+    document.addEventListener("pointerdown",onPointerDown);
+    document.addEventListener("keydown",onKeyDown);
+    return()=>{document.removeEventListener("pointerdown",onPointerDown);document.removeEventListener("keydown",onKeyDown);};
+  },[openMenuId]);
+
+  useEffect(() => {
     const isDragging=Boolean(dragPreview);
-    if(!bar||isDragging===dropBarWasActiveRef.current)return;
-    dropBarWasActiveRef.current=isDragging;
+    if(isDragging===dropPanelWasActiveRef.current)return;
+    dropPanelWasActiveRef.current=isDragging;
     if(isDragging){
-      // Keep the fixed drop bar mounted only while a drag is active.
+      // Keep the fixed drop panel mounted only while a drag is active.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDropBarVisible(true);
-      requestAnimationFrame(()=>gsap.fromTo(bar,{y:100,opacity:0},{y:0,opacity:1,duration:.34,ease:"power3.out",overwrite:true}));
-    }else if(dropBarVisible){
-      gsap.to(bar,{y:100,opacity:0,duration:.34,ease:"power3.out",overwrite:true,onComplete:()=>setDropBarVisible(false)});
+      setDropPanelVisible(true);
+      requestAnimationFrame(()=>{
+        const panel=dropPanelRef.current;
+        if(!panel)return;
+        if(window.matchMedia("(prefers-reduced-motion: reduce)").matches)gsap.set(panel,{x:0,opacity:1});
+        else gsap.fromTo(panel,{x:260,opacity:0},{x:0,opacity:1,duration:.56,ease:"power3.out",overwrite:true});
+      });
+    }else if(dropPanelVisible){
+      const panel=dropPanelRef.current;
+      if(!panel){
+        // A drag can be cancelled before the panel mounts; clear its pending visibility.
+        setDropPanelVisible(false);return;
+      }
+      if(window.matchMedia("(prefers-reduced-motion: reduce)").matches){
+        // No exit tween is needed when reduced motion is requested.
+        setDropPanelVisible(false);
+      }
+      else gsap.to(panel,{x:260,opacity:0,duration:.56,ease:"power3.out",overwrite:true,onComplete:()=>setDropPanelVisible(false)});
     }
-  },[dragPreview,dropBarVisible]);
+  },[dragPreview,dropPanelVisible]);
 
   useLayoutEffect(() => {
     const firstPositions=flipPositionsRef.current;
@@ -155,7 +187,7 @@ export function PipelineView() {
     });
   },[dragPreview?.stage,dragPreview?.beforeId]);
 
-  const closeDeals=useCallback((state:"won"|"lost")=>persist((current)=>current.map((deal)=>deal.id===dragRef.current?.id?{...deal,previousStage:deal.stage,closedAs:state,closedAt:Date.now()}:deal)),[persist]);
+  const closeDeals=useCallback((id:string,state:"won"|"lost")=>persist((current)=>current.map((deal)=>deal.id===id?{...deal,previousStage:deal.stage,closedAs:state,closedAt:Date.now()}:deal)),[persist]);
   const moveDeal=useCallback((id:string,target:Stage,beforeId?:string)=>{
     const firstPositions=new Map<string,DOMRect>();
     const draggedFirst=rootRef.current?.querySelector<HTMLElement>(".ws-drag-preview")?.getBoundingClientRect();
@@ -200,11 +232,24 @@ export function PipelineView() {
     const onUp=(event:PointerEvent)=>{
       const pending=pointerRef.current;if(!pending||pending.pointerId!==event.pointerId)return;
       const drag=dragRef.current;
-      if(drag){suppressClickRef.current=true;if(drag.target==="won"||drag.target==="lost")closeDeals(drag.target);else if(drag.stage)moveDeal(drag.id,drag.stage,drag.beforeId);window.setTimeout(()=>{suppressClickRef.current=false;},0);}
+      if(drag){suppressClickRef.current=true;if(drag.target==="won"||drag.target==="lost")closeDeals(drag.id,drag.target);else if(drag.stage)moveDeal(drag.id,drag.stage,drag.beforeId);window.setTimeout(()=>{suppressClickRef.current=false;},0);}
       pointerRef.current=null;dragRef.current=null;dragMotionRef.current=null;document.documentElement.classList.remove("ws-grabbing");setDragPreview(null);
     };
-    window.addEventListener("pointermove",onMove,{passive:false});window.addEventListener("pointerup",onUp);window.addEventListener("pointercancel",onUp);
-    return()=>{window.removeEventListener("pointermove",onMove);window.removeEventListener("pointerup",onUp);window.removeEventListener("pointercancel",onUp);};
+    const onCancel=(event:PointerEvent)=>{
+      const pending=pointerRef.current;if(!pending||pending.pointerId!==event.pointerId)return;
+      pointerRef.current=null;dragRef.current=null;dragMotionRef.current=null;document.documentElement.classList.remove("ws-grabbing");setDragPreview(null);
+    };
+    const onKeyDown=(event:KeyboardEvent)=>{
+      if(event.key!=="Escape"||!dragRef.current)return;
+      event.preventDefault();
+      pointerRef.current=null;dragRef.current=null;dragMotionRef.current=null;
+      document.documentElement.classList.remove("ws-grabbing");
+      suppressClickRef.current=true;window.setTimeout(()=>{suppressClickRef.current=false;},0);
+      setDragPreview(null);
+    };
+    window.addEventListener("pointermove",onMove,{passive:false});window.addEventListener("pointerup",onUp);window.addEventListener("pointercancel",onCancel);
+    window.addEventListener("keydown",onKeyDown);
+    return()=>{window.removeEventListener("pointermove",onMove);window.removeEventListener("pointerup",onUp);window.removeEventListener("pointercancel",onCancel);window.removeEventListener("keydown",onKeyDown);};
   },[closeDeals,moveDeal]);
 
   const members=useMemo(()=>[...WORKSPACE_MEMBERS.map((member)=>({name:member.name,initials:member.initials,hue:member.hue})),...Array.from(new Set(deals.map((deal)=>deal.owner))).filter((name)=>!WORKSPACE_MEMBERS.some((member)=>member.name===name)).map((name)=>({name,initials:initials(name),hue:210}))],[deals]);
@@ -219,6 +264,7 @@ export function PipelineView() {
   const closeListDeals=closeList==="won"?won:lost;
   const closeLabel=closeList==="won"?"Won deals":"Lost deals";
   const pendingDeal=dragPreview?deals.find((deal)=>deal.id===dragPreview.id):null;
+  const pendingMember=pendingDeal?members.find((member)=>member.name===pendingDeal.owner):null;
   const dismissOverlay=()=>{setCloseList(null);setDetailId(null);setInsightsOpen(false);};
   const closeDeal=(deal:Deal,state:"won"|"lost")=>persist((current)=>current.map((item)=>item.id===deal.id?{...item,previousStage:item.stage,closedAs:state,closedAt:Date.now()}:item));
   const reopen=(deal:Deal)=>{persist((current)=>current.map((item)=>item.id===deal.id?{...item,stage:item.previousStage??"Contacted",previousStage:null,closedAs:null,closedAt:null}:item));setCloseList(null);};
@@ -227,25 +273,84 @@ export function PipelineView() {
   const probabilities:Record<Stage,number>={"New lead":.1,Contacted:.2,Qualified:.4,Proposal:.6,Negotiation:.75,Closing:.9};
   const updateDeal=(id:string,update:Partial<Deal>)=>persist((current)=>current.map((deal)=>deal.id===id?{...deal,...update}:deal));
 
-  return <div ref={rootRef} className="ws pl pipeline-root" data-view="pipeline">
+  return <div ref={rootRef} className={`ws pl pipeline-root${dragPreview?" is-dragging":""}`} data-view="pipeline">
     <section className="card ws-head pl-head" aria-label="Pipeline controls">
-      <div className="ws-head__about"><span className="ws-head__dot" style={{"--dot":"var(--primary)"} as CSSProperties}/><div className="ws-head__txt"><h2 className="ws-head__desc">Deal pipeline</h2><p className="ws-head__meta"><span>{visibleDeals.length} open deals</span><span className="ws-head__n">Weighted forecast {money(weighted)}</span><span className="pl-close-pills"><button className="pill pl-close-pill pl-close-pill--won" type="button" aria-label={`Won: ${thisMonth.length} this month, ${money(wonValue)}`} onClick={()=>setCloseList("won")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z"/></svg><span>Won · {thisMonth.length} this month · {money(wonValue)}</span></button><button className="pill pl-close-pill pl-close-pill--lost" type="button" aria-label={`Lost: ${lost.length}`} onClick={()=>setCloseList("lost")}><Icon name="x"/><span>Lost · {lost.length}</span></button></span></p></div></div>
+      <div className="ws-head__about"><span className="ws-head__dot" style={{"--dot":"var(--primary)"} as CSSProperties}/><div className="ws-head__txt"><h2 className="ws-head__desc">Deal pipeline</h2><p className="ws-head__meta"><span>{visibleDeals.length} open deals</span><span className="ws-head__n">Weighted forecast {money(weighted)}</span><span className="pl-close-pills"><button className="pill pl-close-pill pl-close-pill--won" type="button" aria-label={`Won: ${thisMonth.length} this month, ${money(wonValue)}`} onClick={()=>setCloseList("won")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z"/></svg><span>Won Â· {thisMonth.length} this month Â· {money(wonValue)}</span></button><button className="pill pl-close-pill pl-close-pill--lost" type="button" aria-label={`Lost: ${lost.length}`} onClick={()=>setCloseList("lost")}><Icon name="x"/><span>Lost Â· {lost.length}</span></button></span></p></div></div>
       <div className="ws-head__tools"><div className="ws-head__people" role="group" aria-label="Filter by owner"><span className="ws-head__label">Owner</span><div className="ws-people">{members.map((member)=><button key={member.name} className="ws-person" type="button" aria-pressed={filter===member.name} title={member.name} aria-label={`Show ${member.name}'s deals`} onClick={()=>setFilter((current)=>current===member.name?null:member.name)}><span className="av av--sm" style={{"--h":member.hue} as CSSProperties}>{member.initials}</span></button>)}</div><button className="link-btn ws-clear" type="button" hidden={!filter} onClick={()=>setFilter(null)}>Show all</button></div><button className="btn" type="button" onClick={()=>setInsightsOpen(true)}><Icon name="chart"/>Insights</button><button className="btn btn--primary ws-head__add" type="button" onClick={()=>openAdd("New lead")}><Icon name="plus"/>New deal</button></div>
     </section>
     <div className="pl-board-wrap">
     <div className="ws-scroll pl-scroll" role="region" aria-label="Pipeline stages" tabIndex={-1}>
       <div className="pl-board">
-        {STAGES.map((stage,index)=>{const cards=visibleDeals.filter((deal)=>deal.stage===stage);return <section className={`ws-col pl-col${dragPreview?" is-drop-ready":""}${dragPreview?.stage===stage?" is-drop-target":""}`} data-stage={stage} key={stage} aria-label={`${stage} deals`}><header className="ws-col__head"><span className={`ws-col__dot${index===2?" ws-col__dot--doing":""}${index>2?" ws-col__dot--review":""}`} aria-hidden="true"/><h2 className="ws-col__name">{stage}</h2><span className="ws-col__count">{cards.length}</span><button className="icon-btn ws-col__plus" type="button" aria-label={`Add a deal to ${stage}`} onClick={()=>openAdd(stage)}><Icon name="plus"/></button></header><ol className="ws-list pl-list" aria-label={`${stage} cards`}>
-          {cards.filter((deal)=>deal.id!==dragPreview?.id).map((deal,cardIndex,cards)=>{const member=members.find((item)=>item.name===deal.owner);const calculated=scoreFor(deal);return <Fragment key={deal.id}>{dragPreview?.stage===stage&&dragPreview.beforeId===deal.id&&<li className="ws-ph" aria-hidden="true" style={{"--ws-ph-height":`${dragPreview.height}px`} as CSSProperties}/>}<li className="ws-card pl-card" data-id={deal.id} onPointerDown={(event)=>{if(event.button!==0||(event.target as HTMLElement).closest("button,input,select,a"))return;const rect=event.currentTarget.getBoundingClientRect();pointerRef.current={id:deal.id,pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,offsetX:event.clientX-rect.left,offsetY:event.clientY-rect.top,width:rect.width,height:rect.height};}} onClickCapture={(event)=>{if(suppressClickRef.current){event.preventDefault();event.stopPropagation();}}} onClick={()=>{if(!suppressClickRef.current)setDetailId(deal.id);}}><span className="ws-card__lift" aria-hidden="true"/><div className="ws-card__top"><span className="pill ws-tag">{deal.source}</span><span className="pill pill--gray pl-company-tag">{deal.company||"No company"}</span></div><h3 className="ws-card__title">{deal.name}</h3>{index<3&&<span className={`pill pill--${leadScoreTone(calculated,settings)} pl-score`}>{calculated} · {leadScoreLabel(calculated,settings)}</span>}{index>=2&&<p className="pl-value"><b>{money(deal.value)}</b><span><Icon name="calendar"/> {new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric"}).format(new Date(`${deal.expectedClose}T12:00:00`))}</span></p>}<div className="ws-card__foot"><span title={deal.owner}><span className="av av--sm" style={{"--h":member?.hue??210} as CSSProperties}>{initials(deal.owner)}</span><span className="sr-only">{deal.owner}</span></span></div></li>{dragPreview?.stage===stage&&!dragPreview.beforeId&&cardIndex===cards.length-1&&<li className="ws-ph" aria-hidden="true" style={{"--ws-ph-height":`${dragPreview.height}px`} as CSSProperties}/>}</Fragment>;})}
-          {dragPreview?.stage===stage&&!dragPreview.beforeId&&cards.length===0&&<li className="ws-ph" aria-hidden="true" style={{"--ws-ph-height":`${dragPreview.height}px`} as CSSProperties}/>}
-        </ol>
-        </section>;})}
+        {STAGES.map((stage, index) => {
+          const cards = visibleDeals.filter((deal) => deal.stage === stage);
+          const stageValue = cards.reduce((sum, deal) => sum + deal.value, 0);
+          const stageTones = ['var(--primary)', 'var(--c2)', 'var(--warn)', 'var(--sea)', 'var(--down)', 'var(--text)'];
+          return <section className={`ws-col pl-col pl-col--${index}`} data-stage={stage} key={stage} aria-label={`${stage} deals`} style={{ '--pl-stage-tone': stageTones[index] } as CSSProperties}>
+            <header className="ws-col__head">
+              <span className="ws-col__dot pl-stage-dot" aria-hidden="true" />
+              <h2 className="ws-col__name">{stage}</h2>
+              <span className="ws-col__count">{cards.length}</span>
+              <span className="pl-stage-value" title={`Combined deal value: ${money(stageValue)}`}>{compactMoney(stageValue)}</span>
+              <button className="icon-btn ws-col__plus" type="button" aria-label={`Add a deal to ${stage}`} onClick={() => openAdd(stage)}><Icon name="plus" /></button>
+            </header>
+            <ol className="ws-list pl-list" aria-label={`${stage} cards`}>
+              {cards.filter((deal) => deal.id !== dragPreview?.id).map((deal, cardIndex, stageCards) => {
+                const member = members.find((item) => item.name === deal.owner);
+                const closeDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(`${deal.expectedClose}T12:00:00`));
+                return <Fragment key={deal.id}>
+                  {dragPreview?.stage === stage && dragPreview.beforeId === deal.id && <li className="ws-ph pl-ph" aria-hidden="true" style={{ '--ws-ph-height': `${dragPreview.height}px` } as CSSProperties} />}
+                  <li className="ws-card pl-card" data-id={deal.id} onPointerDown={(event) => {
+                    if (event.button !== 0 || (event.target as HTMLElement).closest('button,input,select,a,[role=menu]')) return;
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    pointerRef.current = { id: deal.id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top, width: rect.width, height: rect.height };
+                  }} onClickCapture={(event) => {
+                    if (suppressClickRef.current) { event.preventDefault(); event.stopPropagation(); }
+                  }} onClick={() => {
+                    if (!suppressClickRef.current) { setOpenMenuId(null); setMoveMenuOpen(false); setDetailId(deal.id); }
+                  }}>
+                    <span className="ws-card__lift" aria-hidden="true" />
+                    <div className="ws-card__top">
+                      <span className="pl-card__date" title={deal.expectedClose}>Closes {closeDate}</span>
+                      <button className="ws-card__move" type="button" aria-haspopup="menu" aria-expanded={openMenuId === deal.id} aria-label={`Options for ${deal.name}`} title="Deal options" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => {
+                        event.stopPropagation(); setMoveMenuOpen(false); setOpenMenuId((current) => current === deal.id ? null : deal.id);
+                      }}><Icon name="dots" /></button>
+                      {openMenuId === deal.id && <div className="pop ws-menu ws-card-menu pl-card-menu" role="menu" aria-label={`${deal.name} options`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+                        {!moveMenuOpen ? <>
+                          <p className="ws-menu__head">{deal.name}</p>
+                          <button type="button" role="menuitem" onClick={() => { setOpenMenuId(null); setDetailId(deal.id); }}><Icon name="arrow-right" />Open</button>
+                          <button type="button" role="menuitem" onClick={() => setMoveMenuOpen(true)}><Icon name="chev" />Move to…</button>
+                          <span className="pl-menu-divider" />
+                          <button type="button" role="menuitem" onClick={() => { closeDeal(deal, 'won'); setOpenMenuId(null); setNotice(`${deal.name} marked won`); window.setTimeout(() => setNotice(''), 2400); }}><svg className="ico pl-menu-trophy" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z" /></svg>Mark won</button>
+                          <button type="button" role="menuitem" onClick={() => { closeDeal(deal, 'lost'); setOpenMenuId(null); setNotice(`${deal.name} marked lost`); window.setTimeout(() => setNotice(''), 2400); }}><Icon name="x" />Mark lost</button>
+                          <span className="pl-menu-divider" />
+                          <button className="pl-menu-danger" type="button" role="menuitem" onClick={() => { persist((current) => current.filter((item) => item.id !== deal.id)); setOpenMenuId(null); setNotice(`${deal.name} deleted`); window.setTimeout(() => setNotice(''), 2400); }}><Icon name="trash" />Delete</button>
+                        </> : <>
+                          <p className="ws-menu__head">Move to…</p>
+                          <button type="button" role="menuitem" onClick={() => setMoveMenuOpen(false)}><Icon name="arrow-right" className="ws-flip" />Back</button>
+                          {STAGES.filter((target) => target !== stage).map((target) => <button key={target} type="button" role="menuitem" onClick={() => { moveDeal(deal.id, target); setOpenMenuId(null); setMoveMenuOpen(false); }}><span className="ws-col__dot" style={{ background: stageTones[STAGES.indexOf(target)] }} aria-hidden="true" />{target}</button>)}
+                        </>}
+                      </div>}
+                    </div>
+                    <h3 className="ws-card__title">{deal.name}</h3>
+                    <p className="pl-card__description">{deal.company || 'No company'}</p>
+                    <div className="pl-card__bottom">
+                      <b className="pl-card__amount">{money(deal.value)}</b>
+                      <span className="pl-card__assignee" title={deal.owner}><span className="av av--sm" style={{ '--h': member?.hue ?? 210 } as CSSProperties}>{initials(deal.owner)}</span><span className="sr-only">Assigned to {deal.owner}</span></span>
+                    </div>
+                  </li>
+                  {dragPreview?.stage === stage && !dragPreview.beforeId && cardIndex === stageCards.length - 1 && <li className="ws-ph pl-ph" aria-hidden="true" style={{ '--ws-ph-height': `${dragPreview.height}px` } as CSSProperties} />}
+                </Fragment>;
+              })}
+              {dragPreview?.stage === stage && !dragPreview.beforeId && cards.every((deal) => deal.id === dragPreview.id) && <li className="ws-ph pl-ph" aria-hidden="true" style={{ '--ws-ph-height': `${dragPreview.height}px` } as CSSProperties} />}
+            </ol>
+          </section>;
+        })}
       </div>
       <span className="sr-only" aria-live="polite">{visibleDeals.length} open deals</span>
     </div>
     </div>
-    {dragPreview&&pendingDeal&&<div ref={ghostRef} className="ws-drag-preview pl-drag-preview" aria-hidden="true" style={{left:dragPreview.originX,top:dragPreview.originY,width:dragPreview.width,height:dragPreview.height}}><span className="pill ws-tag">{pendingDeal.source}</span><b>{pendingDeal.name}</b><small>{pendingDeal.company}</small>{pendingDeal.stage!=="New lead"&&<span>{money(pendingDeal.value)}</span>}</div>}
-    {dropBarVisible&&<div ref={dropBarRef} className="pl-dropbar" data-active={Boolean(dragPreview)} aria-hidden={!dragPreview}><button className={`pl-dropzone pl-dropzone--won${dragPreview?.target==="won"?" is-drop-target":""}`} type="button" data-closeout="won"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z"/></svg><b>Won</b><span>Drop to close as won</span></button><button className={`pl-dropzone pl-dropzone--lost${dragPreview?.target==="lost"?" is-drop-target":""}`} type="button" data-closeout="lost"><Icon name="x"/><b>Lost</b><span>Drop to close as lost</span></button></div>}
+{dragPreview&&pendingDeal&&<div ref={ghostRef} className="ws-drag-preview pl-drag-preview" aria-hidden="true" style={{left:dragPreview.originX,top:dragPreview.originY,width:dragPreview.width,height:dragPreview.height}}><span className="pl-card__date">Closes {new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric"}).format(new Date(`${pendingDeal.expectedClose}T12:00:00`))}</span><b>{pendingDeal.name}</b><small>{pendingDeal.company||"No company"}</small><span className="pl-drag-preview__foot"><strong>{money(pendingDeal.value)}</strong><span className="av av--sm" style={{"--h":pendingMember?.hue??210} as CSSProperties}>{initials(pendingDeal.owner)}</span></span></div>}
+    {dropPanelVisible&&<div ref={dropPanelRef} className="pl-drop-panel" data-active={Boolean(dragPreview)} aria-hidden={!dragPreview}><button className={`pl-drop-tile pl-drop-tile--won${dragPreview?.target==="won"?" is-drop-target":""}`} type="button" data-closeout="won" disabled={!dragPreview}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z"/></svg><b>Won</b><span>Drop to mark as won</span>{dragPreview?.target==="won"&&<small>{thisMonth.length} this month Â· {money(wonValue)}</small>}</button><button className={`pl-drop-tile pl-drop-tile--lost${dragPreview?.target==="lost"?" is-drop-target":""}`} type="button" data-closeout="lost" disabled={!dragPreview}><Icon name="x"/><b>Lost</b><span>Drop to mark as lost</span>{dragPreview?.target==="lost"&&<small>{lost.length} closed lost Â· {money(lost.reduce((sum,deal)=>sum+deal.value,0))}</small>}</button></div>}
     {notice&&<div className="toasts" aria-live="polite"><div className="toast" role="status"><span className="toast__ico"><Icon name="check"/></span><span>{notice}</span></div></div>}
     <dialog ref={addDialogRef} className="modal" aria-label="Add deal" onCancel={()=>setNewDealStage(null)} onClick={(event)=>{if(event.target===addDialogRef.current)setNewDealStage(null);}}>
       <form className="modal__box" onSubmit={addDeal}>
@@ -266,8 +371,8 @@ export function PipelineView() {
       <div className="sheet__box"><header className="sheet__head"><h2>{insightsOpen?"Pipeline insights":closeList?closeLabel:"Deal details"}</h2><button className="icon-btn" type="button" aria-label="Close" onClick={dismissOverlay}><Icon name="x"/></button></header>
         <div className="sheet__body">
           {insightsOpen&&<div className="pl-insights"><article className="card pl-insight"><span className="stat__label">Open value</span><b className="stat__val">{money(openValue)}</b></article><article className="card pl-insight"><span className="stat__label">Weighted value</span><b className="stat__val">{money(weighted)}</b></article><article className="card pl-insight"><span className="stat__label">Won this month</span><b className="stat__val">{money(wonValue)}</b></article><article className="card pl-insight"><span className="stat__label">Waiting to be qualified</span><b className="stat__val">{visibleDeals.filter((deal)=>deal.stage==="New lead").length}</b></article><section className="card pl-insight"><div className="card__head"><h3 className="card__title">Weighted forecast by stage</h3></div><ul className="pl-probabilities">{STAGES.map((stage)=><li key={stage}><span>{stage}</span><b>{Math.round(probabilities[stage]*100)}%</b><small>{money(visibleDeals.filter((deal)=>deal.stage===stage).reduce((sum,deal)=>sum+deal.value*probabilities[stage],0))}</small></li>)}</ul></section></div>}
-          {closeList&&<ul className="pl-closed-list">{closeListDeals.map((deal)=><li key={deal.id}><span><b>{deal.name}</b><small>{deal.company} · {money(deal.value)}</small></span><button className="btn btn--sm" type="button" onClick={()=>reopen(deal)}>Reopen</button></li>)}{!closeListDeals.length&&<li className="card__sub">No closed deals yet.</li>}</ul>}
-          {selected&&<div className="ws-sh pl-detail"><div className="field"><label className="label" htmlFor="pl-detail-name">Deal name</label><input className="input" id="pl-detail-name" value={selected.name} maxLength={90} onChange={(event)=>updateDeal(selected.id,{name:event.target.value})}/></div><div className="field"><label className="label" htmlFor="pl-detail-company">Company</label><input className="input" id="pl-detail-company" value={selected.company} maxLength={90} onChange={(event)=>updateDeal(selected.id,{company:event.target.value})}/></div><div className="ws-sc__grid"><div className="field"><label className="label" htmlFor="pl-detail-stage">Stage</label><select className="select" id="pl-detail-stage" value={selected.stage} onChange={(event)=>updateDeal(selected.id,{stage:event.target.value as Stage})}>{STAGES.map((stage)=><option key={stage}>{stage}</option>)}</select></div><div className="field"><label className="label" htmlFor="pl-detail-owner">Owner</label><select className="select" id="pl-detail-owner" value={selected.owner} onChange={(event)=>updateDeal(selected.id,{owner:event.target.value})}>{members.map((member)=><option key={member.name}>{member.name}</option>)}</select></div><div className="field"><label className="label" htmlFor="pl-detail-source">Source</label><select className="select" id="pl-detail-source" value={selected.source} onChange={(event)=>updateDeal(selected.id,{source:event.target.value})}>{["Website","Email","Instagram","Referral","Partner","Phone"].map((source)=><option key={source}>{source}</option>)}</select></div><div className="field"><label className="label" htmlFor="pl-detail-value">Deal value</label><input className="input" id="pl-detail-value" type="number" min="0" value={selected.value} onChange={(event)=>updateDeal(selected.id,{value:Number(event.target.value)||0})}/></div><div className="field"><label className="label" htmlFor="pl-detail-date">Expected close</label><input className="input" id="pl-detail-date" type="date" value={selected.expectedClose} onChange={(event)=>updateDeal(selected.id,{expectedClose:event.target.value})}/></div></div><p className="card__sub">Lead score: <span className={`pill pill--${leadScoreTone(scoreFor(selected),settings)}`}>{scoreFor(selected)} · {leadScoreLabel(scoreFor(selected),settings)}</span></p></div>}
+          {closeList&&<ul className="pl-closed-list">{closeListDeals.map((deal)=><li key={deal.id}><span><b>{deal.name}</b><small>{deal.company} Â· {money(deal.value)}</small></span><button className="btn btn--sm" type="button" onClick={()=>reopen(deal)}>Reopen</button></li>)}{!closeListDeals.length&&<li className="card__sub">No closed deals yet.</li>}</ul>}
+          {selected&&<div className="ws-sh pl-detail"><div className="field"><label className="label" htmlFor="pl-detail-name">Deal name</label><input className="input" id="pl-detail-name" value={selected.name} maxLength={90} onChange={(event)=>updateDeal(selected.id,{name:event.target.value})}/></div><div className="field"><label className="label" htmlFor="pl-detail-company">Company</label><input className="input" id="pl-detail-company" value={selected.company} maxLength={90} onChange={(event)=>updateDeal(selected.id,{company:event.target.value})}/></div><div className="ws-sc__grid"><div className="field"><label className="label" htmlFor="pl-detail-stage">Stage</label><select className="select" id="pl-detail-stage" value={selected.stage} onChange={(event)=>updateDeal(selected.id,{stage:event.target.value as Stage})}>{STAGES.map((stage)=><option key={stage}>{stage}</option>)}</select></div><div className="field"><label className="label" htmlFor="pl-detail-owner">Owner</label><select className="select" id="pl-detail-owner" value={selected.owner} onChange={(event)=>updateDeal(selected.id,{owner:event.target.value})}>{members.map((member)=><option key={member.name}>{member.name}</option>)}</select></div><div className="field"><label className="label" htmlFor="pl-detail-source">Source</label><select className="select" id="pl-detail-source" value={selected.source} onChange={(event)=>updateDeal(selected.id,{source:event.target.value})}>{["Website","Email","Instagram","Referral","Partner","Phone"].map((source)=><option key={source}>{source}</option>)}</select></div><div className="field"><label className="label" htmlFor="pl-detail-value">Deal value</label><input className="input" id="pl-detail-value" type="number" min="0" value={selected.value} onChange={(event)=>updateDeal(selected.id,{value:Number(event.target.value)||0})}/></div><div className="field"><label className="label" htmlFor="pl-detail-date">Expected close</label><input className="input" id="pl-detail-date" type="date" value={selected.expectedClose} onChange={(event)=>updateDeal(selected.id,{expectedClose:event.target.value})}/></div></div><p className="card__sub">Lead score: <span className={`pill pill--${leadScoreTone(scoreFor(selected),settings)}`}>{scoreFor(selected)} Â· {leadScoreLabel(scoreFor(selected),settings)}</span></p></div>}
         </div>
         {selected&&<footer className="sheet__foot"><button className="btn btn--danger btn--ghost ws-sc__del" type="button" onClick={()=>closeDeal(selected,"lost")}>Mark lost</button><button className="btn btn--primary" type="button" onClick={()=>closeDeal(selected,"won")}>Mark won</button><button className="btn btn--dark" type="button" onClick={dismissOverlay}>Done</button></footer>}
       </div>
