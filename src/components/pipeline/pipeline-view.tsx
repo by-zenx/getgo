@@ -84,6 +84,8 @@ export function PipelineView() {
   const ghostRef = useRef<HTMLDivElement>(null);
   const dragMotionRef = useRef<{ x: (value: number) => void; y: (value: number) => void; rotation: (value: number) => void } | null>(null);
   const flipPositionsRef = useRef<Map<string, DOMRect> | null>(null);
+  const boardHydratedRef = useRef(false);
+  const boardEntrancePlayedRef = useRef(false);
   const suppressClickRef = useRef(false);
   const [deals,setDeals] = useState<Deal[]>(()=>seed.map(normalizeDeal));
   const [now,setNow] = useState(FIXTURE_NOW);
@@ -94,6 +96,8 @@ export function PipelineView() {
   const [filter,setFilter] = useState<string | null>(null);
   const [searchQuery,setSearchQuery] = useState("");
   const [viewMode,setViewMode] = useState<ViewMode>("board");
+  const [viewPreferenceReady,setViewPreferenceReady] = useState(false);
+  const [entrancePending,setEntrancePending] = useState(true);
   const [includeClosed,setIncludeClosed] = useState(false);
   const [sortBy,setSortBy] = useState<DealSort>("close");
   const [sortDirection,setSortDirection] = useState<1|-1>(1);
@@ -116,12 +120,25 @@ export function PipelineView() {
     // Restore browser-only preferences after hydration to keep server and client markup identical.
     setSettings(currentSettings);
     const loaded=enrichHandoffs(readBoard(),readHandoffs(),threads,currentSettings);
+    boardHydratedRef.current=true;
     setDeals(loaded);
     if (loaded !== seed) { try { localStorage.setItem(BOARD_KEY,JSON.stringify(loaded)); } catch {} }
     const refresh=() => { const latest=validSettings(); setSettings(latest); setDeals((current) => { const next=enrichHandoffs(current,readHandoffs(),threads,latest); if(next!==current) { try { localStorage.setItem(BOARD_KEY,JSON.stringify(next)); } catch {} } return next; }); };
     window.addEventListener("storage",refresh); window.addEventListener("corbel:pipeline-leads-updated",refresh); window.addEventListener("corbel:lead-scoring-updated",refresh);
     return () => { window.removeEventListener("storage",refresh); window.removeEventListener("corbel:pipeline-leads-updated",refresh); window.removeEventListener("corbel:lead-scoring-updated",refresh); };
   },[]);
+
+  useLayoutEffect(() => {
+    if(!boardHydratedRef.current||!viewPreferenceReady||boardEntrancePlayedRef.current||viewMode!=="board")return;
+    const cards=rootRef.current?.querySelectorAll<HTMLElement>(".pl-board .pl-card");
+    if(!cards?.length)return;
+    boardEntrancePlayedRef.current=true;
+    // Reveal the pre-paint hidden cards immediately when motion is disabled.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if(window.matchMedia("(prefers-reduced-motion: reduce)").matches){setEntrancePending(false);return;}
+    cards.forEach((card)=>card.classList.add("is-entering"));
+    gsap.fromTo(cards,{opacity:0,y:40,rotation:(index)=>index%2===0?3:-3,scale:.94},{opacity:1,y:0,rotation:0,scale:1,duration:.8,ease:"back.out(1.4)",stagger:.06,clearProps:"transform,opacity",overwrite:true,onComplete:()=>{cards.forEach((card)=>card.classList.remove("is-entering"));setEntrancePending(false);}});
+  },[deals,viewMode,viewPreferenceReady]);
 
   useEffect(() => {
     try {
@@ -130,6 +147,8 @@ export function PipelineView() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if(saved==="board"||saved==="list")setViewMode(saved);
     } catch { /* retain the default board view */ }
+    // Do not animate the board until the saved view has been restored.
+    setViewPreferenceReady(true);
   },[]);
 
   useEffect(() => {
@@ -231,9 +250,8 @@ export function PipelineView() {
   const closeDeals=useCallback((id:string,state:"won"|"lost",lostReason?:string)=>persist((current)=>current.map((deal)=>deal.id===id?{...deal,previousStage:deal.stage,closedAs:state,closedAt:FIXTURE_NOW,lostReason:state==="lost"?(lostReason??"Not given"):undefined}:deal)),[persist]);
   const moveDeal=useCallback((id:string,target:Stage,beforeId?:string)=>{
     const firstPositions=new Map<string,DOMRect>();
+    rootRef.current?.querySelectorAll<HTMLElement>(".pl-board .pl-card").forEach((card)=>{if(card.dataset.id)firstPositions.set(card.dataset.id,card.getBoundingClientRect());});
     const draggedFirst=rootRef.current?.querySelector<HTMLElement>(".ws-drag-preview")?.getBoundingClientRect();
-    rootRef.current?.querySelectorAll<HTMLElement>(".ws-card").forEach((card)=>{if(card.dataset.id)firstPositions.set(card.dataset.id,card.getBoundingClientRect());});
-    const first=draggedFirst;
     persist((current)=>{
       const items=[...current]; const source=items.find((deal)=>deal.id===id); if(!source)return current;
       const moved={...source,stage:target,stageHistory:{...source.stageHistory,[target]:source.stageHistory?.[target]??dateOnly(FIXTURE_NOW)}};
@@ -242,9 +260,24 @@ export function PipelineView() {
       without.splice(insertGlobal<0?without.length:insertGlobal,0,moved);
       return without;
     });
-    if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches)window.requestAnimationFrame(()=>{
-      firstPositions.forEach((start,cardId)=>{const card=rootRef.current?.querySelector<HTMLElement>(`.ws-card[data-id="${CSS.escape(cardId)}"]`);if(!card)return;const last=card.getBoundingClientRect();const x=start.left-last.left;const y=start.top-last.top;if(Math.abs(x)<1&&Math.abs(y)<1)return;gsap.fromTo(card,{x,y},{x:0,y:0,duration:.48,ease:"expo.out",clearProps:"transform",overwrite:"auto"});});
-      if(first){const moved=rootRef.current?.querySelector<HTMLElement>(`.ws-card[data-id="${CSS.escape(id)}"]`);if(moved){const last=moved.getBoundingClientRect();gsap.fromTo(moved,{x:first.left-last.left,y:first.top-last.top,scale:.98},{x:0,y:0,scale:1,duration:.42,ease:"power3.out",clearProps:"transform",overwrite:"auto"});}}
+    if(window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+    window.requestAnimationFrame(()=>{
+      const animateFrom=(card:HTMLElement,first:DOMRect,duration:number,ease:string)=>{
+        if(!first.width||!first.height)return;
+        gsap.killTweensOf(card);gsap.set(card,{clearProps:"transform"});
+        const last=card.getBoundingClientRect();const x=first.left-last.left;const y=first.top-last.top;
+        if(Math.abs(x)<1&&Math.abs(y)<1)return;
+        card.classList.add("is-stage-moving");
+        gsap.fromTo(card,{x,y},{x:0,y:0,duration,ease,clearProps:"transform",overwrite:true,onComplete:()=>card.classList.remove("is-stage-moving")});
+      };
+      firstPositions.forEach((first,cardId)=>{
+        if(cardId===id)return;
+        const card=rootRef.current?.querySelector<HTMLElement>(`.pl-board .ws-card[data-id="${CSS.escape(cardId)}"]`);
+        if(card)animateFrom(card,first,.42,"power3.out");
+      });
+      const moved=rootRef.current?.querySelector<HTMLElement>(`.pl-board .ws-card[data-id="${CSS.escape(id)}"]`);
+      const first=draggedFirst??firstPositions.get(id);
+      if(moved&&first)animateFrom(moved,first,.56,"power3.inOut");
     });
   },[persist]);
 
@@ -274,16 +307,17 @@ export function PipelineView() {
       const pending=pointerRef.current;if(!pending||pending.pointerId!==event.pointerId)return;
       const drag=dragRef.current;
       if(drag){suppressClickRef.current=true;if(drag.target==="won")closeDeals(drag.id,"won");else if(drag.target==="lost")setPendingLostId(drag.id);else if(drag.stage)moveDeal(drag.id,drag.stage,drag.beforeId);window.setTimeout(()=>{suppressClickRef.current=false;},0);}
+      flipPositionsRef.current=null;
       pointerRef.current=null;dragRef.current=null;dragMotionRef.current=null;document.documentElement.classList.remove("ws-grabbing");setDragPreview(null);
     };
     const onCancel=(event:PointerEvent)=>{
       const pending=pointerRef.current;if(!pending||pending.pointerId!==event.pointerId)return;
-      pointerRef.current=null;dragRef.current=null;dragMotionRef.current=null;document.documentElement.classList.remove("ws-grabbing");setDragPreview(null);
+      flipPositionsRef.current=null;pointerRef.current=null;dragRef.current=null;dragMotionRef.current=null;document.documentElement.classList.remove("ws-grabbing");setDragPreview(null);
     };
     const onKeyDown=(event:KeyboardEvent)=>{
       if(event.key!=="Escape"||!dragRef.current)return;
       event.preventDefault();
-      pointerRef.current=null;dragRef.current=null;dragMotionRef.current=null;
+      flipPositionsRef.current=null;pointerRef.current=null;dragRef.current=null;dragMotionRef.current=null;
       document.documentElement.classList.remove("ws-grabbing");
       suppressClickRef.current=true;window.setTimeout(()=>{suppressClickRef.current=false;},0);
       setDragPreview(null);
@@ -329,7 +363,7 @@ export function PipelineView() {
   const updateDeal=(id:string,update:Partial<Deal>)=>persist((current)=>current.map((deal)=>deal.id===id?{...deal,...update}:deal));
   const toggleDealTeam=(deal:Deal,name:string)=>{const team=dealTeam(deal).filter((member)=>member!==deal.owner);updateDeal(deal.id,{team:team.includes(name)?team.filter((member)=>member!==name):[...team,name]});};
 
-  return <div ref={rootRef} className={`ws pl pipeline-root${dragPreview?" is-dragging":""}`} data-view="pipeline">
+  return <div ref={rootRef} className={`ws pl pipeline-root${dragPreview?" is-dragging":""}${entrancePending?" is-entrance-pending":""}`} data-view="pipeline">
     <section className="ws-head pl-head pl-toolbar" aria-label="Pipeline controls">
       <div className="pl-toolbar__start">
         <label className="pl-search"><Icon name="search"/><input className="input" aria-label="Search deals" placeholder="Search deals..." value={searchQuery} onChange={(event)=>setSearchQuery(event.target.value)}/><button className="pl-search__clear" type="button" aria-label="Clear search" hidden={!searchQuery} onClick={()=>setSearchQuery("")}><Icon name="x"/></button></label>

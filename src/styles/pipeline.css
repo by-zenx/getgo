@@ -4,6 +4,7 @@
 [data-view="pipeline"] .pl-col{box-sizing:border-box;height:auto;min-height:440px;overflow:visible;align-self:stretch;border:1px solid var(--line-2);box-shadow:none}
 [data-view="pipeline"] .pl-col[data-drag-over="true"]{border:2px solid var(--pl-stage-tone);box-shadow:none}
 [data-view="pipeline"] .pl-card{touch-action:none;min-width:0}
+[data-view="pipeline"].is-entrance-pending .pl-board .pl-card:not(.is-entering){opacity:0}
 [data-view="pipeline"] .pl-card>*{min-width:0}
 [data-view="pipeline"] .pl-card.is-dragging{opacity:.55}
 [data-view="pipeline"] .pl-card .ws-card__top{min-width:0;gap:6px}
@@ -15,7 +16,10 @@
 [data-view="pipeline"] .pl-card .ws-tag,[data-view="pipeline"] .pl-company-tag{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 [data-view="pipeline"] .pl-card{cursor:grab}
 [data-view="pipeline"] .pl-card{transition:transform .22s var(--ease),box-shadow .22s var(--ease)}
+[data-view="pipeline"] .pl-card.is-entering{transition:none!important}
+[data-view="pipeline"] .pl-card.is-stage-moving{transition:none!important}
 @media (hover:hover){[data-view="pipeline"] .pl-card:hover{z-index:5;transform:translateY(-4px);box-shadow:0 0 0 1px var(--line-2),var(--shadow-lift)}}
+@media (hover:hover){[data-view="pipeline"] .pl-card.is-stage-moving:hover{transform:none}}
 [data-view="pipeline"] .pl-card__date{color:var(--muted);font-size:var(--fs-xs);font-weight:500;line-height:1.3}
 [data-view="pipeline"] .pl-card__description{min-width:0;overflow:hidden;color:var(--faint);font-size:var(--fs-sm);line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
 [data-view="pipeline"] .pl-card__bottom{display:flex;min-width:0;align-items:center;justify-content:space-between;gap:10px;margin-top:2px}
