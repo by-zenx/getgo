@@ -61,6 +61,8 @@ export function PipelineView() {
   const rootRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<HTMLDialogElement>(null);
   const addDialogRef = useRef<HTMLDialogElement>(null);
+  const dropBarRef = useRef<HTMLDivElement>(null);
+  const dropBarWasActiveRef = useRef(false);
   const dragRef = useRef<Drag | null>(null);
   const pointerRef = useRef<PendingPointer | null>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
@@ -70,6 +72,7 @@ export function PipelineView() {
   const [deals,setDeals] = useState<Deal[]>(seed);
   const [now,setNow] = useState(FIXTURE_NOW);
   const [dragPreview,setDragPreview] = useState<Drag|null>(null);
+  const [dropBarVisible,setDropBarVisible] = useState(false);
   const [filter,setFilter] = useState<string | null>(null);
   const [settings,setSettings] = useState<LeadScoringSettings>(DEFAULT_LEAD_SCORING);
   const [closeList,setCloseList] = useState<CloseState>(null);
@@ -120,6 +123,21 @@ export function PipelineView() {
       }
     }else if(!newDealStage&&dialog.open)dialog.close();
   },[newDealStage]);
+
+  useEffect(() => {
+    const bar=dropBarRef.current;
+    const isDragging=Boolean(dragPreview);
+    if(!bar||isDragging===dropBarWasActiveRef.current)return;
+    dropBarWasActiveRef.current=isDragging;
+    if(isDragging){
+      // Keep the fixed drop bar mounted only while a drag is active.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDropBarVisible(true);
+      requestAnimationFrame(()=>gsap.fromTo(bar,{y:100,opacity:0},{y:0,opacity:1,duration:.34,ease:"power3.out",overwrite:true}));
+    }else if(dropBarVisible){
+      gsap.to(bar,{y:100,opacity:0,duration:.34,ease:"power3.out",overwrite:true,onComplete:()=>setDropBarVisible(false)});
+    }
+  },[dragPreview,dropBarVisible]);
 
   useLayoutEffect(() => {
     const firstPositions=flipPositionsRef.current;
@@ -175,6 +193,8 @@ export function PipelineView() {
       document.documentElement.classList.add("ws-grabbing");
       if(ghostRef.current){const reduce=window.matchMedia("(prefers-reduced-motion: reduce)").matches;if(reduce)gsap.set(ghostRef.current,{x:dx,y:dy,rotation:0});else if(!dragMotionRef.current)dragMotionRef.current={x:gsap.quickTo(ghostRef.current,"x",{duration:.14,ease:"power3.out"}),y:gsap.quickTo(ghostRef.current,"y",{duration:.14,ease:"power3.out"}),rotation:gsap.quickTo(ghostRef.current,"rotation",{duration:.12,ease:"power2.out"})};if(!reduce&&dragMotionRef.current){dragMotionRef.current.x(dx);dragMotionRef.current.y(dy);dragMotionRef.current.rotation(next.tilt);}}
       if(placementChanged)setDragPreview(next);
+      if(event.clientY<80){window.scrollBy(0,-Math.max(6,Math.ceil((80-event.clientY)/4)));}
+      else if(event.clientY>window.innerHeight-80){window.scrollBy(0,Math.max(6,Math.ceil((event.clientY-(window.innerHeight-80))/4)));}
       event.preventDefault();
     };
     const onUp=(event:PointerEvent)=>{
@@ -207,9 +227,9 @@ export function PipelineView() {
   const probabilities:Record<Stage,number>={"New lead":.1,Contacted:.2,Qualified:.4,Proposal:.6,Negotiation:.75,Closing:.9};
   const updateDeal=(id:string,update:Partial<Deal>)=>persist((current)=>current.map((deal)=>deal.id===id?{...deal,...update}:deal));
 
-  return <div ref={rootRef} className="ws pl" data-view="pipeline">
+  return <div ref={rootRef} className="ws pl pipeline-root" data-view="pipeline">
     <section className="card ws-head pl-head" aria-label="Pipeline controls">
-      <div className="ws-head__about"><span className="ws-head__dot" style={{"--dot":"var(--primary)"} as CSSProperties}/><div className="ws-head__txt"><h2 className="ws-head__desc">Deal pipeline</h2><p className="ws-head__meta"><span>{visibleDeals.length} open deals</span><span className="ws-head__n">Weighted forecast {money(weighted)}</span></p></div></div>
+      <div className="ws-head__about"><span className="ws-head__dot" style={{"--dot":"var(--primary)"} as CSSProperties}/><div className="ws-head__txt"><h2 className="ws-head__desc">Deal pipeline</h2><p className="ws-head__meta"><span>{visibleDeals.length} open deals</span><span className="ws-head__n">Weighted forecast {money(weighted)}</span><span className="pl-close-pills"><button className="pill pl-close-pill pl-close-pill--won" type="button" aria-label={`Won: ${thisMonth.length} this month, ${money(wonValue)}`} onClick={()=>setCloseList("won")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z"/></svg><span>Won · {thisMonth.length} this month · {money(wonValue)}</span></button><button className="pill pl-close-pill pl-close-pill--lost" type="button" aria-label={`Lost: ${lost.length}`} onClick={()=>setCloseList("lost")}><Icon name="x"/><span>Lost · {lost.length}</span></button></span></p></div></div>
       <div className="ws-head__tools"><div className="ws-head__people" role="group" aria-label="Filter by owner"><span className="ws-head__label">Owner</span><div className="ws-people">{members.map((member)=><button key={member.name} className="ws-person" type="button" aria-pressed={filter===member.name} title={member.name} aria-label={`Show ${member.name}'s deals`} onClick={()=>setFilter((current)=>current===member.name?null:member.name)}><span className="av av--sm" style={{"--h":member.hue} as CSSProperties}>{member.initials}</span></button>)}</div><button className="link-btn ws-clear" type="button" hidden={!filter} onClick={()=>setFilter(null)}>Show all</button></div><button className="btn" type="button" onClick={()=>setInsightsOpen(true)}><Icon name="chart"/>Insights</button><button className="btn btn--primary ws-head__add" type="button" onClick={()=>openAdd("New lead")}><Icon name="plus"/>New deal</button></div>
     </section>
     <div className="pl-board-wrap">
@@ -223,12 +243,9 @@ export function PipelineView() {
       </div>
       <span className="sr-only" aria-live="polite">{visibleDeals.length} open deals</span>
     </div>
-    <aside className="pl-closeouts" aria-label="Closed deals">
-      <button className={`pl-closeout pl-closeout--won${dragPreview?.target==="won"?" is-drop-target":""}`} type="button" data-closeout="won" onClick={()=>{if(!suppressClickRef.current)setCloseList("won");}}><span className="pl-closeout__icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z"/></svg></span><b>Won</b><span>{thisMonth.length} this month · <strong>{money(wonValue)}</strong></span></button>
-      <button className={`pl-closeout pl-closeout--lost${dragPreview?.target==="lost"?" is-drop-target":""}`} type="button" data-closeout="lost" onClick={()=>{if(!suppressClickRef.current)setCloseList("lost");}}><span className="pl-closeout__icon"><Icon name="x"/></span><b>Lost</b><span>{lost.length} closed lost</span></button>
-    </aside>
     </div>
     {dragPreview&&pendingDeal&&<div ref={ghostRef} className="ws-drag-preview pl-drag-preview" aria-hidden="true" style={{left:dragPreview.originX,top:dragPreview.originY,width:dragPreview.width,height:dragPreview.height}}><span className="pill ws-tag">{pendingDeal.source}</span><b>{pendingDeal.name}</b><small>{pendingDeal.company}</small>{pendingDeal.stage!=="New lead"&&<span>{money(pendingDeal.value)}</span>}</div>}
+    {dropBarVisible&&<div ref={dropBarRef} className="pl-dropbar" data-active={Boolean(dragPreview)} aria-hidden={!dragPreview}><button className={`pl-dropzone pl-dropzone--won${dragPreview?.target==="won"?" is-drop-target":""}`} type="button" data-closeout="won"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v4m-4 4h8m-6-4h4v4h-4z"/></svg><b>Won</b><span>Drop to close as won</span></button><button className={`pl-dropzone pl-dropzone--lost${dragPreview?.target==="lost"?" is-drop-target":""}`} type="button" data-closeout="lost"><Icon name="x"/><b>Lost</b><span>Drop to close as lost</span></button></div>}
     {notice&&<div className="toasts" aria-live="polite"><div className="toast" role="status"><span className="toast__ico"><Icon name="check"/></span><span>{notice}</span></div></div>}
     <dialog ref={addDialogRef} className="modal" aria-label="Add deal" onCancel={()=>setNewDealStage(null)} onClick={(event)=>{if(event.target===addDialogRef.current)setNewDealStage(null);}}>
       <form className="modal__box" onSubmit={addDeal}>
