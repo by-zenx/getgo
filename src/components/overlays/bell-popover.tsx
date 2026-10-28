@@ -15,7 +15,7 @@ export interface NotificationItem {
 
 const INITIAL_NOTIFICATIONS: NotificationItem[] = [
   { id: "n1", title: "New order #CR-4824 from Aldercrest Hotels ($2,140)", meta: "12m ago · Online checkout", unread: true, icon: "cart" },
-  { id: "n2", title: "Low stock alert: Merino Wool Blanket (8 left in main warehouse)", meta: "1h ago · Inventory monitor", unread: true, icon: "alert" },
+  { id: "n2", title: "Low availability alert: Rapport CRM — Team (8 seats left)", meta: "1h ago · Catalog monitor", unread: true, icon: "alert" },
   { id: "n3", title: "Amara won Renewal contract ($54,450)", meta: "3h ago · Sales pipeline", unread: false, icon: "star" },
   { id: "n4", title: "Weekly automated digest sent to team", meta: "1d ago · Automations", unread: false, icon: "mail" },
 ];

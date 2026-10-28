@@ -37,7 +37,7 @@ const SEEDS: Omit<CustomerRecord, "email" | "phone">[] = [
   { id: "c1", name: "Elena Marsh", city: "Portland, OR", tags: ["vip", "subscriber"], hue: 330, channel: "online", joined: NOW - 640 * DAY, note: "Prefers recycled packaging. Gifts often; offer a gift note." },
   { id: "c2", name: "Theo Lindqvist", city: "Seattle, WA", tags: ["subscriber"], hue: 200, channel: "online", joined: NOW - 410 * DAY, note: "" },
   { id: "c3", name: "Amara Okoye", city: "Austin, TX", tags: ["vip"], hue: 25, channel: "store", joined: NOW - 980 * DAY, note: "Interior designer; buys for client projects." },
-  { id: "c4", name: "Wren & Field Cafe", city: "Denver, CO", tags: ["wholesale"], hue: 150, channel: "online", joined: NOW - 520 * DAY, note: "Net-30 terms. Mugs and carafes for two cafes." },
+  { id: "c4", name: "Wren & Field Cafe", city: "Denver, CO", tags: ["wholesale"], hue: 150, channel: "online", joined: NOW - 520 * DAY, note: "Net-30 terms. Team plan covers two cafe locations." },
   { id: "c5", name: "Sofia Bianchi", city: "Brooklyn, NY", tags: ["new"], hue: 181, channel: "online", joined: NOW - 9 * DAY, note: "" },
   { id: "c6", name: "Marcus Hale", city: "Chicago, IL", tags: ["subscriber"], hue: 215, channel: "store", joined: NOW - 300 * DAY, note: "" },
   { id: "c7", name: "Hana Sato", city: "San Diego, CA", tags: ["vip", "subscriber"], hue: 350, channel: "online", joined: NOW - 760 * DAY, note: "" },
@@ -45,7 +45,7 @@ const SEEDS: Omit<CustomerRecord, "email" | "phone">[] = [
   { id: "c9", name: "Ines Duarte", city: "Miami, FL", tags: ["new", "subscriber"], hue: 10, channel: "online", joined: NOW - 4 * DAY, note: "" },
   { id: "c10", name: "Kofi Mensah", city: "Atlanta, GA", tags: ["subscriber"], hue: 170, channel: "online", joined: NOW - 220 * DAY, note: "" },
   { id: "c11", name: "Greta Novak", city: "Minneapolis, MN", tags: [], hue: 209, channel: "store", joined: NOW - 390 * DAY, note: "" },
-  { id: "c12", name: "The Linen Room", city: "Charleston, SC", tags: ["wholesale", "vip"], hue: 209, channel: "online", joined: NOW - 860 * DAY, note: "Boutique stockist. Reorders towels every six weeks." },
+  { id: "c12", name: "The Linen Room", city: "Charleston, SC", tags: ["wholesale", "vip"], hue: 209, channel: "online", joined: NOW - 860 * DAY, note: "Boutique CRM account. Reviews permissions every six weeks." },
   { id: "c13", name: "Ravi Kapoor", city: "Phoenix, AZ", tags: ["new"], hue: 60, channel: "online", joined: NOW - 2 * DAY, note: "" },
   { id: "c14", name: "Clara Jensen", city: "Madison, WI", tags: ["subscriber"], hue: 190, channel: "store", joined: NOW - 470 * DAY, note: "" },
 ];

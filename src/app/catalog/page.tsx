@@ -1,10 +1,13 @@
+import type { Metadata } from "next";
 import { PageHeading } from "@/components/shell/page-heading";
 import { ProductsView } from "@/components/products/products-view";
 
-export default function ProductsPage() {
+export const metadata: Metadata = { title: "Catalog | Corbel" };
+
+export default function CatalogPage() {
   return (
     <>
-      <PageHeading title="Products" />
+      <PageHeading title="Catalog" />
       <ProductsView />
     </>
   );

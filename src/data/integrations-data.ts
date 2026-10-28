@@ -17,7 +17,7 @@ export const INTEGRATION_PERMISSIONS: Record<IntegrationCategory, string[]> = {
   "Point of sale": ["Read and update stock for both shops", "Create orders from in-store sales", "Read customer profiles at the till"],
   Shipping: ["Read orders and shipping addresses", "Buy and print shipping labels", "Send tracking updates to customers"],
   Accounting: ["Read orders, refunds and payouts", "Read tax and currency settings", "Create entries in your books"],
-  Marketing: ["Read products, prices and stock", "Read which customers agreed to marketing", "Track sales from campaigns"],
+  Marketing: ["Read catalog items, prices and availability", "Read which customers agreed to marketing", "Track sales from campaigns"],
   Support: ["Read customer profiles and orders", "Create conversations in Messages", "Add notes to customer profiles"],
 };
 
@@ -31,7 +31,7 @@ const FIXTURES: IntegrationRecord[] = [
   { id: "i5", name: "Chatterbox", cat: "Support", desc: "Website chat that lands in your Messages inbox.", connected: true, hue: 181, synced: NOW - DAY },
   { id: "i6", name: "Pinpoint Ads", cat: "Marketing", desc: "Sync your catalogue to shopping ads.", connected: false, hue: 350 },
   { id: "i7", name: "Taxwise", cat: "Accounting", desc: "Sales tax for every state, filed for you.", connected: false, hue: 200 },
-  { id: "i8", name: "Inkwell Reviews", cat: "Marketing", desc: "Collect photo reviews and show them on product pages.", connected: true, hue: 45, synced: NOW - 3 * DAY },
+  { id: "i8", name: "Inkwell Reviews", cat: "Marketing", desc: "Collect customer reviews and display them alongside catalog items.", connected: true, hue: 45, synced: NOW - 3 * DAY },
   { id: "i9", name: "Courier Plus", cat: "Shipping", desc: "Same-day local delivery from your shops.", connected: false, hue: 10 },
   { id: "i10", name: "Sheetsync", cat: "Accounting", desc: "A live spreadsheet of orders and stock.", connected: false, hue: 120 },
   { id: "i11", name: "Bookwell", cat: "Support", desc: "Let customers book in-store styling sessions.", connected: false, hue: 209 },

@@ -17,15 +17,15 @@ interface FinderItem {
 const SEARCH_ITEMS: FinderItem[] = [
   { group: "Pages", id: "p-dash", title: "Dashboard", meta: "Overview & KPIs", icon: "grid", href: "/dashboard" },
   { group: "Pages", id: "p-orders", title: "Orders", meta: "128 total", icon: "cart", href: "/orders" },
-  { group: "Pages", id: "p-products", title: "Products", meta: "Catalog & stock", icon: "box", href: "/products" },
+  { group: "Pages", id: "p-catalog", title: "Catalog", meta: "Items & pricing", icon: "box", href: "/catalog" },
   { group: "Pages", id: "p-customers", title: "Customers", meta: "Directory & feedback", icon: "users", href: "/customers" },
   { group: "Pages", id: "p-messages", title: "Messages", meta: "Inbox & email", icon: "chat", href: "/messages" },
   { group: "Pages", id: "p-analytics", title: "Analytics", meta: "Channel performance", icon: "chart", href: "/analytics" },
   { group: "Pages", id: "p-automations", title: "Automations", meta: "Flows & triggers", icon: "zap", href: "/automations" },
   { group: "Pages", id: "p-workspace", title: "Workspace", meta: "Project boards", icon: "board", href: "/workspace" },
   { group: "Pages", id: "p-settings", title: "Settings", meta: "Store, theme, plan", icon: "gear", href: "/settings" },
-  { group: "Products", id: "pr-1", title: "Merino Wool Blanket", meta: "Stock: 42 · $180", icon: "tag", href: "/products" },
-  { group: "Products", id: "pr-2", title: "Washed Linen Throw", meta: "Stock: 18 · $120", icon: "tag", href: "/products" },
+  { group: "Catalog", id: "item-1", title: "Rapport CRM — Team", meta: "240 seats · $89", icon: "tag", href: "/catalog" },
+  { group: "Catalog", id: "item-2", title: "Sales Process Review", meta: "8 slots · $950", icon: "tag", href: "/catalog" },
   { group: "Orders", id: "o-1", title: "Order #CR-4821", meta: "Kumo Retail · $1,420", icon: "cart", href: "/orders" },
   { group: "Customers", id: "c-1", title: "Kumo Retail", meta: "Fleet licence · High value", icon: "users", href: "/customers" },
 ];
@@ -132,7 +132,7 @@ export function FinderDialog({
             ref={inputRef}
             id="finder-q"
             type="text"
-            placeholder="Search pages, products, orders, customers…"
+            placeholder="Search pages, catalog, orders, customers…"
             autoComplete="off"
             spellCheck="false"
             role="combobox"

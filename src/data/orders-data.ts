@@ -1,3 +1,5 @@
+import { createInitialProducts } from "@/data/products-data";
+
 export type OrderStatus = "pending" | "paid" | "packed" | "shipped" | "delivered" | "refunded" | "cancelled";
 export type OrderChannel = "online" | "store";
 
@@ -56,19 +58,7 @@ export const ORDER_CUSTOMERS: OrderCustomer[] = [
   { id: "c14", name: "Clara Jensen", email: "clara@northwind.test", city: "Madison, WI", hue: 190, channel: "store" },
 ];
 
-const PRODUCTS = [
-  { id: "p1", name: "Stoneware Mug, Fog", price: 24, hue: 210 },
-  { id: "p2", name: "Linen Tea Towels, set of 3", price: 32, hue: 30 },
-  { id: "p3", name: "Oak Serving Board", price: 58, hue: 35 },
-  { id: "p4", name: "Copper Watering Can", price: 74, hue: 25 },
-  { id: "p5", name: "Ceramic Planter, Sand", price: 38, hue: 45 },
-  { id: "p6", name: "Waffle Bath Towel", price: 42, hue: 170 },
-  { id: "p7", name: "Brass Desk Lamp", price: 129, hue: 42 },
-  { id: "p8", name: "Walnut Pen Tray", price: 36, hue: 25 },
-  { id: "p9", name: "Enamel Colander", price: 34, hue: 10 },
-  { id: "p10", name: "Glass Carafe, 1 L", price: 28, hue: 190 },
-  { id: "p11", name: "Wool Throw, Moss", price: 118, hue: 110 },
-];
+const PRODUCTS = createInitialProducts().slice(0, 11).map(({ id, name, price, hue }) => ({ id, name, price, hue }));
 
 const SEED_STATUSES: OrderStatus[] = [
   "pending", "pending", "paid", "paid", "paid", "packed", "packed", "shipped", "shipped", "shipped",

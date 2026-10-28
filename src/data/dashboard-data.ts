@@ -40,8 +40,8 @@ export const DASHBOARD_KPIS: DashboardKPI[] = [
     delta: "+9%",
     deltaPositive: true,
     meta: "86% of monthly target",
-    href: "/products",
-    linkText: "See products",
+    href: "/catalog",
+    linkText: "See catalog",
     info: "Items sold this month against the monthly target.",
   },
   {

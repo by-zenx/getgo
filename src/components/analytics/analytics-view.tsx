@@ -187,7 +187,7 @@ export function AnalyticsView() {
     });
     lines.push([], ["Metric", "This period", "Previous period"]);
     METRICS.forEach((metric) => lines.push([metric.label, formatMetric(metric.key, metricValue(metric.key, current)), formatMetric(metric.key, metricValue(metric.key, previous))]));
-    lines.push([], ["Product", "Units", "Revenue"]);
+    lines.push([], ["Catalog item", "Units", "Revenue"]);
     products.forEach(({ product, units, revenue }) => lines.push([product.name, units, revenue.toFixed(2)]));
     const csv = lines.map((line) => line.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\r\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -263,7 +263,7 @@ export function AnalyticsView() {
       </section>
 
       <section className="card an-funnel-card" aria-labelledby="an-funnel-h"><div className="card__head"><h2 className="card__title" id="an-funnel-h">Conversion funnel</h2><span className="card__actions card__sub" data-funnel-note>{scope === "store" ? "Door counts and till data" : scope === "online" ? "Website sessions" : "Website sessions and door counts"}</span></div>
-        <ol className="an-funnel">{["Visits", "Product views", "Add to cart", "Checkout", "Purchase"].map((label, index) => { const value = funnel[index]; const previousValue = funnel[index - 1] ?? value; const share = value / Math.max(1, funnel[0]); const drop = index ? Math.max(0, 1 - value / Math.max(1, previousValue)) : 0; return <li key={label}>
+        <ol className="an-funnel">{["Visits", "Catalog views", "Enquiries", "Proposals", "Purchase"].map((label, index) => { const value = funnel[index]; const previousValue = funnel[index - 1] ?? value; const share = value / Math.max(1, funnel[0]); const drop = index ? Math.max(0, 1 - value / Math.max(1, previousValue)) : 0; return <li key={label}>
           {index > 0 && <div className={`an-drop${drop > 0.65 ? " is-worst" : ""}`} aria-hidden="true"><span>{percent(drop, 0)}</span> drop off</div>}
           <div className="an-fstep" data-step={index}><div className="an-fstep__top"><span className="an-fstep__name">{label}</span><b data-fv>{number(value)}</b><span className="an-fstep__pct" data-fp>{percent(share, 1)}</span></div><div className="an-fstep__track"><span className="an-fstep__fill" data-v={share} style={{ transform: `scaleX(${share})` }} /></div></div>
         </li>; })}</ol>
@@ -277,9 +277,9 @@ export function AnalyticsView() {
         </div>
       </section>
 
-      <section className="card an-products" aria-labelledby="an-products-h"><div className="card__head"><h2 className="card__title" id="an-products-h">Top products</h2><Link className="card__actions more-link" href="/products">All products</Link></div>
-        <div className="table-wrap"><table className="table an-ptable"><thead><tr><th scope="col">#</th><th scope="col">Product</th><th scope="col" className="num">Units</th><th scope="col" className="num">Revenue</th><th scope="col" className="an-ptable__barh"><span className="sr-only">Share of top seller</span></th></tr></thead>
-          <tbody>{products.slice(0, 10).map(({ product, units, revenue }, index) => <tr key={product.id} data-pid={product.id}><td className="an-rank" data-rank>{index + 1}</td><td><div className="cell-main"><span className="thumb" style={{ "--h": product.hue } as CSSProperties}>{product.name.split(/[ ,]/).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase()}</span><div><Link className="an-plink" href={`/products/${product.id}`}><b>{product.name}</b></Link><small>{product.category}</small></div></div></td><td className="num" data-units>{number(units)}</td><td className="num"><b data-prow>{money(revenue)}</b></td><td className="an-ptable__bar"><span className="an-pbar"><span className="an-pbar__fill" data-v={revenue / Math.max(1, products[0]?.revenue ?? 1)} style={{ transform: `scaleX(${revenue / Math.max(1, products[0]?.revenue ?? 1)})` }} /></span></td></tr>)}</tbody>
+      <section className="card an-products" aria-labelledby="an-products-h"><div className="card__head"><h2 className="card__title" id="an-products-h">Top catalog items</h2><Link className="card__actions more-link" href="/catalog">All items</Link></div>
+        <div className="table-wrap"><table className="table an-ptable"><thead><tr><th scope="col">#</th><th scope="col">Item</th><th scope="col" className="num">Units</th><th scope="col" className="num">Revenue</th><th scope="col" className="an-ptable__barh"><span className="sr-only">Share of top seller</span></th></tr></thead>
+          <tbody>{products.slice(0, 10).map(({ product, units, revenue }, index) => <tr key={product.id} data-pid={product.id}><td className="an-rank" data-rank>{index + 1}</td><td><div className="cell-main"><span className="thumb" style={{ "--h": product.hue } as CSSProperties}>{product.name.split(/[ ,]/).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase()}</span><div><Link className="an-plink" href={`/catalog/${product.id}`}><b>{product.name}</b></Link><small>{product.category}</small></div></div></td><td className="num" data-units>{number(units)}</td><td className="num"><b data-prow>{money(revenue)}</b></td><td className="an-ptable__bar"><span className="an-pbar"><span className="an-pbar__fill" data-v={revenue / Math.max(1, products[0]?.revenue ?? 1)} style={{ transform: `scaleX(${revenue / Math.max(1, products[0]?.revenue ?? 1)})` }} /></span></td></tr>)}</tbody>
         </table></div>
       </section>
 

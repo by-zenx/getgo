@@ -93,7 +93,7 @@ export function aggregateAnalytics(points: AnalyticsPoint[], scope: AnalyticsSco
 export function analyticsProducts(revenue: number, scope: AnalyticsScope) {
   const products = createInitialProducts().filter((product) => product.status === "active");
   const weighted = products.map((product, index) => {
-    const categoryWeight: Record<string, number> = { Kitchen: 0.68, Table: 0.6, Bath: 0.64, Garden: 0.5, Desk: 0.74 };
+    const categoryWeight: Record<string, number> = { Software: 0.76, Services: 0.58, Support: 0.7, Training: 0.62, Hardware: 0.44 };
     const onlineWeight = categoryWeight[product.category] ?? 0.6;
     const channelWeight = scope === "online" ? onlineWeight : scope === "store" ? 1 - onlineWeight : 1;
     return { product, weight: product.sold30 * product.price * channelWeight * (0.78 + 0.44 * random(index * 31 + 7)) };

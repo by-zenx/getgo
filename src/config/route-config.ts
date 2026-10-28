@@ -9,7 +9,7 @@ export interface TabItem {
 export const MAIN_TABS: TabItem[] = [
   { href: "/dashboard", label: "Dashboard", route: "dashboard" },
   { href: "/orders", label: "Orders", route: "orders", count: 3 },
-  { href: "/products", label: "Products", route: "products" },
+  { href: "/catalog", label: "Catalog", route: "catalog" },
   { href: "/customers", label: "Customers", route: "customers", groupedRoutes: ["feedback"] },
   { href: "/messages", label: "Messages", route: "messages", count: 2, groupedRoutes: ["email"] },
   { href: "/analytics", label: "Analytics", route: "analytics" },

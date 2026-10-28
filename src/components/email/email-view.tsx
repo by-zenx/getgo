@@ -78,10 +78,9 @@ function EmailPreview({ campaign, mode, onModeChange }: { campaign: EmailCampaig
   const products = useMemo(() => {
     const active = createInitialProducts().filter((product) => product.status === "active");
     const text = `${campaign.name} ${campaign.subject} ${campaign.preview} ${campaign.audience}`.toLowerCase();
-    const preferred = /skillet|cast iron/.test(text) ? ["p13", "p15", "p1"]
-      : /gift|holiday/.test(text) ? ["p12", "p8", "p11"]
-      : /welcome/.test(text) ? ["p1", "p3", "p12"]
-      : /table|evening/.test(text) ? ["p3", "p12", "p10"] : [];
+    const preferred = /support|help/.test(text) ? ["p7", "p15", "p8"]
+      : /team|sales|pipeline/.test(text) ? ["p1", "p2", "p11"]
+      : /training|admin/.test(text) ? ["p5", "p6", "p14"] : [];
     const picked = preferred.map((id) => active.find((product) => product.id === id)).filter(Boolean);
     for (const product of active.slice().sort((a, b) => campaignHash(`${campaign.id}:${a.id}`) - campaignHash(`${campaign.id}:${b.id}`))) {
       if (picked.length >= 3) break;
@@ -403,7 +402,7 @@ export function EmailView() {
       {action && <div className="modal__box"><header className="modal__head"><h2 className="modal__title">{actionTitle}</h2><button className="icon-btn" type="button" aria-label="Close" onClick={() => setAction(null)}><Icon name="x" /></button></header>
         {actionUsesForm ? <form id="em-action-form" className="modal__body em-form" noValidate onSubmit={submitAction}>
           {(action.kind === "create" || action.kind === "edit") && <>
-            <label className="field"><span className="label">Campaign name</span><input className="input" name="name" required maxLength={60} placeholder="For example, Spring bath edit" defaultValue={action.kind === "edit" ? actionCampaign?.name : ""} /></label>
+            <label className="field"><span className="label">Campaign name</span><input className="input" name="name" required maxLength={60} placeholder="For example, Spring team update" defaultValue={action.kind === "edit" ? actionCampaign?.name : ""} /></label>
             <label className="field"><span className="label">Subject line</span><input className="input" name="subject" required maxLength={90} placeholder="What people see in their inbox" defaultValue={action.kind === "edit" ? actionCampaign?.subject : ""} /></label>
             <label className="field"><span className="label">Preview text <small className="em-opt">optional</small></span><input className="input" name="preview" maxLength={120} placeholder="The line shown after the subject" defaultValue={action.kind === "edit" ? actionCampaign?.preview : ""} /></label>
             <label className="field"><span className="label">Audience</span><select className="select" name="audience" defaultValue={action.kind === "edit" ? actionCampaign?.audience : EMAIL_AUDIENCES[0].name}>{EMAIL_AUDIENCES.map((audience) => <option value={audience.name} key={audience.name}>{audience.name} ({audience.count.toLocaleString("en-US")})</option>)}</select></label>

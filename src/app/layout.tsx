@@ -4,9 +4,9 @@ import { SvgSprite } from "@/components/icons/svg-sprite";
 import { AppShell } from "@/components/shell/app-shell";
 
 export const metadata: Metadata = {
-  title: "Corbel — sales dashboard for an online and in-store shop",
+  title: "Corbel — sales CRM for growing teams",
   description:
-    "Corbel is an animated sales dashboard for a shop that sells online and in store: live revenue, a sales score, monthly analytics, visits by hour and device, products, orders, customers, an inbox, email campaigns, automations, integrations, project boards, help, feedback and settings — light and dark.",
+    "Corbel is an animated CRM dashboard for growing teams: pipeline, catalog, sales, customers, an inbox, email campaigns, automations, integrations, project boards, help, feedback and settings — light and dark.",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "48x48" },

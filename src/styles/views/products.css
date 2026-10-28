@@ -20,3 +20,11 @@
   [data-view="products"] .prd-card__in:before,
   [data-view="products"] .prd-card__in:after { transition: none; }
 }
+.prd {
+  display: grid;
+  gap: 16px;
+}
+
+.prd-empty {
+  margin-bottom: 16px;
+}
